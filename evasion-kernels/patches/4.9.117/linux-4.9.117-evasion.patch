@@ -1,0 +1,481 @@
+diff -ru linux-4.9.117/drivers/clk/clk.c linux-4.9.117-alien/drivers/clk/clk.c
+--- linux-4.9.117/drivers/clk/clk.c	2018-08-03 01:55:27.000000000 -0400
++++ linux-4.9.117-alien/drivers/clk/clk.c	2020-11-30 19:29:24.878130682 -0500
+@@ -420,6 +420,7 @@
+ 
+ 	return !core ? NULL : core->hw->clk;
+ }
++EXPORT_SYMBOL_GPL(__clk_lookup);
+ 
+ static void clk_core_get_boundaries(struct clk_core *core,
+ 				    unsigned long *min_rate,
+diff -ru linux-4.9.117/drivers/clk/clkdev.c linux-4.9.117-alien/drivers/clk/clkdev.c
+--- linux-4.9.117/drivers/clk/clkdev.c	2018-08-03 01:55:27.000000000 -0400
++++ linux-4.9.117-alien/drivers/clk/clkdev.c	2020-11-30 19:29:24.834130257 -0500
+@@ -144,12 +144,15 @@
+ 
+ 	list_for_each_entry(p, &clocks, node) {
+ 		match = 0;
++		printk("EVASION DEBUG: %s: Iterating\n", __func__);
+ 		if (p->dev_id) {
++		        printk("EVASION DEBUG: %s: clk->dev_id = %s\n", __func__, p->dev_id);
+ 			if (!dev_id || strcmp(p->dev_id, dev_id))
+ 				continue;
+ 			match += 2;
+ 		}
+ 		if (p->con_id) {
++		        printk("EVASION DEBUG: %s: clk->con_id = %s\n", __func__, p->con_id);
+ 			if (!con_id || strcmp(p->con_id, con_id))
+ 				continue;
+ 			match += 1;
+@@ -173,9 +176,13 @@
+ 
+ 	mutex_lock(&clocks_mutex);
+ 
++        //printk("EVASION DEBUG: %s: Inside dev_id = %s\n", __func__, dev_id);
+ 	cl = clk_find(dev_id, con_id);
+ 	if (!cl)
++	{
++                printk("EVASION DEBUG: %s: clk_find failed for dev_id='%s', con_id='%s'\n", __func__, dev_id, con_id);
+ 		goto out;
++        }
+ 
+ 	clk = __clk_create_clk(cl->clk_hw, dev_id, con_id);
+ 	if (IS_ERR(clk))
+diff -ru linux-4.9.117/drivers/clk/versatile/clk-vexpress-osc.c linux-4.9.117-alien/drivers/clk/versatile/clk-vexpress-osc.c
+--- linux-4.9.117/drivers/clk/versatile/clk-vexpress-osc.c	2018-08-03 01:55:27.000000000 -0400
++++ linux-4.9.117-alien/drivers/clk/versatile/clk-vexpress-osc.c	2020-11-30 19:29:24.884130740 -0500
+@@ -106,6 +106,7 @@
+ 	of_clk_add_provider(pdev->dev.of_node, of_clk_src_simple_get, clk);
+ 
+ 	dev_dbg(&pdev->dev, "Registered clock '%s'\n", init.name);
++	printk("EVASION DEBUG: Registered clock '%s'\n", init.name);
+ 
+ 	return 0;
+ }
+diff -ru linux-4.9.117/drivers/of/base.c linux-4.9.117-alien/drivers/of/base.c
+--- linux-4.9.117/drivers/of/base.c	2018-08-03 01:55:27.000000000 -0400
++++ linux-4.9.117-alien/drivers/of/base.c	2020-11-30 19:29:22.441107177 -0500
+@@ -460,6 +460,7 @@
+ 		prop = __of_find_property(device, "compatible", NULL);
+ 		for (cp = of_prop_next_string(prop, NULL); cp;
+ 		     cp = of_prop_next_string(prop, cp), index++) {
++		        //printk("%s(): Comparing <%s> vs <%s>\n", __func__, cp, compat);
+ 			if (of_compat_cmp(cp, compat, strlen(compat)) == 0) {
+ 				score = INT_MAX/2 - (index << 2);
+ 				break;
+@@ -986,6 +987,7 @@
+ 	if (!matches)
+ 		return NULL;
+ 
++        //printk("%s(): Inside, node->name=%s\n", __func__, node->name);
+ 	for (; matches->name[0] || matches->type[0] || matches->compatible[0]; matches++) {
+ 		score = __of_device_is_compatible(node, matches->compatible,
+ 						  matches->type, matches->name);
+@@ -1159,7 +1161,22 @@
+ static void *of_find_property_value_of_size(const struct device_node *np,
+ 			const char *propname, u32 min, u32 max, size_t *len)
+ {
+-	struct property *prop = of_find_property(np, propname, NULL);
++        struct property *prop;
++        //printk("Getting property for node %s\n", np->name);
++	//if( (strncmp(np->name, "generic_node", 12)==0) || (strncmp(np->name, "generic_subnode", 15)==0))
++	//{
++        //  printk("Special case for node %s and proprty %s, min = %u, max = %u\n", np->name, propname, min, max);
++	//  prop = kzalloc(sizeof(struct property), GFP_KERNEL);
++	//  prop->name = kzalloc(16, GFP_KERNEL);
++	//  strcpy(prop->name, propname);
++	//  prop->value = kzalloc(8, GFP_KERNEL);
++	//  //strncpy(prop->value, "\x00\x00\x01\x01\x00\x00\x00\x01",8);
++        //  *((u32 *)prop->value) = 0x01000000;
++	//  prop->length = sizeof(u32);
++	//  printk("%s(): prop->value = %p\n", __func__, prop->value);
++	//}
++	//else
++	  prop = of_find_property(np, propname, NULL);
+ 
+ 	if (!prop)
+ 		return ERR_PTR(-EINVAL);
+@@ -1328,7 +1345,18 @@
+ 			       size_t sz_min, size_t sz_max)
+ {
+ 	size_t sz, count;
+-	const __be32 *val = of_find_property_value_of_size(np, propname,
++        const __be32 *val;
++	if( (strncmp(np->name, "generic_node", 12)==0) || (strncmp(np->name, "generic_subnode", 15)==0))
++	{
++	  *out_values = 1;
++	  return sz_min;
++	  //char *c;
++	  //printk("%s(): val = %p\n", __func__, val);
++          //c = (char *)val;
++	  //printk("%s(): %hhx %hhx %hhx %hhx\n", __func__, *c, *(c+1),*(c+2),*(c+3));
++	  //printk("%s(): %hhx\n", __func__, *c);
++	}
++	val = of_find_property_value_of_size(np, propname,
+ 						(sz_min * sizeof(*out_values)),
+ 						(sz_max * sizeof(*out_values)),
+ 						&sz);
+diff -ru linux-4.9.117/drivers/pinctrl/Kconfig linux-4.9.117-alien/drivers/pinctrl/Kconfig
+--- linux-4.9.117/drivers/pinctrl/Kconfig	2018-08-03 01:55:27.000000000 -0400
++++ linux-4.9.117-alien/drivers/pinctrl/Kconfig	2021-01-01 14:29:15.676409327 -0500
+@@ -3,7 +3,10 @@
+ #
+ 
+ config PINCTRL
+-	bool
++	bool "PINCTRL support"
++	default y
++	---help---
++	  Pin ctrl
+ 
+ menu "Pin controllers"
+ 	depends on PINCTRL
+diff -ru linux-4.9.117/include/linux/clk-provider.h linux-4.9.117-alien/include/linux/clk-provider.h
+--- linux-4.9.117/include/linux/clk-provider.h	2018-08-03 01:55:27.000000000 -0400
++++ linux-4.9.117-alien/include/linux/clk-provider.h	2020-11-30 19:29:10.822995125 -0500
+@@ -797,6 +797,7 @@
+ 			struct clk *(*clk_src_get)(struct of_phandle_args *args,
+ 						   void *data),
+ 			void *data);
++struct clk *__clk_lookup(const char *name);
+ int of_clk_add_hw_provider(struct device_node *np,
+ 			   struct clk_hw *(*get)(struct of_phandle_args *clkspec,
+ 						 void *data),
+diff -ru linux-4.9.117/kernel/module.c linux-4.9.117-alien/kernel/module.c
+--- linux-4.9.117/kernel/module.c	2018-08-03 01:55:27.000000000 -0400
++++ linux-4.9.117-alien/kernel/module.c	2020-11-30 19:29:18.575069890 -0500
+@@ -63,6 +63,12 @@
+ #include <linux/dynamic_debug.h>
+ #include <uapi/linux/module.h>
+ #include "module-internal.h"
++#include <linux/firmware.h>
++#include <linux/interrupt.h>
++#include <linux/func_stubs.h>
++#include <linux/clk.h>
++#include <linux/clk-provider.h>
++#include <linux/of_address.h>
+ 
+ #define CREATE_TRACE_POINTS
+ #include <trace/events/module.h>
+@@ -2209,6 +2215,195 @@
+ 	return 0;
+ }
+ 
++
++int request_firmware_stub(const struct firmware **firmware_p, const char *name, 
++                 struct device *device);
++int request_firmware_stub(const struct firmware **firmware_p, const char *name,
++                 struct device *device)
++{
++	struct firmware *firmware;
++
++	*firmware_p = firmware = kzalloc(sizeof(*firmware), GFP_KERNEL);
++	firmware->size = 1024;
++	firmware->data = kzalloc(1024, GFP_KERNEL);
++	printk("%s(): allocated dummy formware of 1024 bytes at address 0x%p\n", __func__,  firmware);
++	return 0;
++}
++
++int request_threaded_irq_stub(unsigned int irq, irq_handler_t handler,
++                      irq_handler_t thread_fn,
++                      unsigned long flags, const char *name, void *dev);
++
++int request_threaded_irq_stub(unsigned int irq, irq_handler_t handler,
++                      irq_handler_t thread_fn,
++                      unsigned long flags, const char *name, void *dev)
++{
++	return 0;
++}
++
++
++struct clk *clk_get_stub(struct device *dev, const char *con_id)
++{
++
++	struct clk *clk = NULL;
++
++        clk = __clk_lookup("oscclk0");
++	if(clk)
++	{
++	  printk("%s(): Returning clock oscclk0\n", __func__);
++	  return clk;
++	}
++	printk("%s(): Returning empty clock!\n", __func__);
++        clk = kzalloc(1024, GFP_KERNEL);
++	return clk;
++
++
++	//const char *dev_id = dev ? dev_name(dev) : NULL;
++	//char apb_pclk_name[] = "pxlclk"; //oscclk7"; //apb_pclk";
++	//printk("%s(): Inside con_id = %s, replacing it with %s\n", __func__, con_id, apb_pclk_name);
++
++	//return clk_get_sys(dev_id, apb_pclk_name);
++}
++
++/* This is copied from clk-devres.c */
++static void devm_clk_release__(struct device *dev, void *res)
++{
++	clk_put(*(struct clk **)res);
++}
++struct clk *devm_clk_get_stub(struct device *dev, const char *id)
++{
++	//const char *dev_id = dev ? dev_name(dev) : NULL;
++	//char apb_pclk_name[] = "apb_pclk";
++	//printk("%s(): Inside con_id = %s, replacing it with %s\n", __func__, con_id, apb_pclk_name);
++
++	//struct clk **ptr, *clk = NULL;
++	struct clk *clk = NULL;
++
++        clk = __clk_lookup("oscclk0");
++	if(clk)
++	{
++	  printk("%s(): Returning clock oscclk0\n", __func__);
++	  return clk;
++	}
++	printk("%s(): Returning empty clock!\n", __func__);
++        clk = kzalloc(1024, GFP_KERNEL);
++	return clk;
++
++	//ptr = devres_alloc(devm_clk_release__, sizeof(*ptr), GFP_KERNEL);
++	//if (!ptr)
++	//	return ERR_PTR(-ENOMEM);
++
++	////clk = clk_get_stub(dev, id); /* Changed clk_get() to clk_get_stub() */
++	//clk = clk_get(dev, "apb_pclk"); /* Changed clk_get() to clk_get_stub() */
++	//if (!IS_ERR(clk)) {
++	//	*ptr = clk;
++	//	devres_add(dev, ptr);
++	//} else {
++	//	devres_free(ptr);
++	//}
++
++	//return clk;
++}
++
++/* We ignore <np> and <name> and return oscclk0 */
++struct clk *of_clk_get_by_name_stub(struct device_node *np, const char *name)
++{
++
++	struct clk *clk = NULL;
++
++        clk = __clk_lookup("oscclk0");
++	if(clk)
++	{
++	  printk("%s(): Returning clock oscclk0\n", __func__);
++	  return clk;
++	}
++	printk("%s(): Returning empty clock!\n", __func__);
++        clk = kzalloc(1024, GFP_KERNEL);
++	return clk;
++}
++
++//void *ioremap_stub(resource_size_t res_cookie, size_t size)
++//uint32_t ioremap_stub(resource_size_t res_cookie, size_t size)
++void *ioremap_stub(resource_size_t res_cookie, size_t size)
++{
++	//printk("%s(): Inside\n", __func__);
++        //void *ret = kzalloc(size, GFP_KERNEL);
++
++        void *addr;
++	if(size == 0)
++	{
++	  addr= kzalloc(0x1000, GFP_KERNEL);
++	  printk("%s(): request for size %d, returning %p (4096 bytes)\n", __func__, size, addr);
++	}
++	else
++	{
++	  addr= kzalloc(size, GFP_KERNEL);
++	  printk("%s(): request for size %d, returning %p (%d bytes)\n", __func__, size, addr, size);
++	}
++	return addr;
++}
++
++
++void *of_iomap_stub(struct device_node *np, int index)
++{
++	struct resource res;
++	void *addr;
++
++	if (of_address_to_resource(np, index, &res))
++		return NULL;
++
++	//return ioremap(res.start, resource_size(&res));
++        addr = kzalloc(resource_size(&res), GFP_KERNEL);
++	return addr;
++}
++
++
++#define NUMBER_OF_STUBS 16
++#define GENERIC_STUB_NAME "generic_stub_0"
++#define REQUEST_FIRMWARE_STUB_NAME "request_firmware_stub"
++#define REQUEST_THREADED_IRQ_STUB_NAME "request_threaded_irq_stub"
++//char *alt_symbol_names[NUMBER_OF_ALT_SYMBOLS] = {GENERIC_STUB_NAME, REQUEST_FIRMWARE_STUB_NAME};
++//char *stub_names[NUMBER_OF_ALT_SYMBOLS] = {GENERIC_STUB_NAME, REQUEST_FIRMWARE_STUB_NAME};
++typedef struct {
++  char *orig_name;
++  char *stub_name;
++} alt_symb_name_t;
++
++/* Don't forget to update NUMBER_OF_STUBS after adding an entry */
++alt_symb_name_t alt_symb_names[NUMBER_OF_STUBS] = { 
++   {"", GENERIC_STUB_NAME},                           /* 1 */
++   {"request_firmware", REQUEST_FIRMWARE_STUB_NAME}, 
++   {"request_threaded_irq", "generic_stub_0"},
++   {"wait_for_completion", "generic_stub_0"},
++   {"wait_for_completion_timeout", "generic_stub_1"}, /* 5 */
++   {"clk_get", "clk_get_stub"},
++   {"devm_clk_get", "devm_clk_get_stub"},
++   {"clk_set_rate", "gneric_stub_0"},
++   {"_raw_spin_lock", "gneric_stub_0"},
++   {"_raw_spin_unlock", "gneric_stub_0"},            /* 10 */
++   {"of_clk_get_by_name", "of_clk_get_by_name_stub"},
++   {"ioremap", "ioremap_stub"},
++   {"ioremap_wc", "ioremap_stub"},
++   {"of_iomap", "of_iomap_stub"},                   
++   {"i2c_smbus_write_byte_data", "gneric_stub_0"},  /* 15 */
++   {"i2c_smbus_read_byte_data", "gneric_stub_0"}    /* 16 */ /* Don't forget to update the number of stubs after adding an entry here */
++   //{"wait_for_completion_interruptible_timeout", "generic_stub_1"}
++   //{"mutex_lock", "generic_stub_0"},
++   //{"mutex_unlock", "generic_stub_0"}
++};
++//alt_symb_name_t alt_symb_names[NUMBER_OF_STUBS] = { {"", GENERIC_STUB_NAME}, {"request_firmware1", REQUEST_FIRMWARE_STUB_NAME}};
++
++int should_replace_with_stub(char *name)
++{
++  int i = 0;
++  for(i=0; i<NUMBER_OF_STUBS; i++)
++  {
++    if (strcmp(name, alt_symb_names[i]. orig_name) == 0)
++      return i;
++  }
++  return -1;
++}
++
+ /* Change all symbols so that st_value encodes the pointer directly. */
+ static int simplify_symbols(struct module *mod, const struct load_info *info)
+ {
+@@ -2219,8 +2414,26 @@
+ 	int ret = 0;
+ 	const struct kernel_symbol *ksym;
+ 
++        /* Find address of our stub */
++        char *sym_name = "generic_stub";
++        unsigned long generic_stub_addr = 0;
++        unsigned long hack_sym_addr = 0;
++	void *protos = NULL; /* Points to function prototypes inside the module's section 'protos' */
++        func_proto_t proto; /* Used in for loop */
++        generic_stub_addr = kallsyms_lookup_name(sym_name);
++        printk("%s: %s:  starting symbol resolve\n", mod->name,  __func__  );
++
++	protos = section_addr(info, "protos");
++	if(!protos)
++	{
++	  printk("%s(): The module does not have function prototypes section!\n", __func__);
++          return -ENOENT;
++	}
++        printk("%s: %s:  protos is at 0x%p\n", mod->name,  __func__, protos);
++
+ 	for (i = 1; i < symsec->sh_size / sizeof(Elf_Sym); i++) {
+ 		const char *name = info->strtab + sym[i].st_name;
++		int stub_ndx = -1;
+ 
+ 		switch (sym[i].st_shndx) {
+ 		case SHN_COMMON:
+@@ -2247,6 +2460,16 @@
+ 			break;
+ 
+ 		case SHN_UNDEF:
++		        /* Check if we are resolving a symbol that should be redirected
++			   to our custom stub */
++			stub_ndx = should_replace_with_stub(name);
++			if(stub_ndx != -1)
++			{
++			  printk("%s:%s(): replacing func '%s()' with stub '%s()\n'", 
++			            mod->name, __func__, name, alt_symb_names[stub_ndx].stub_name);
++			  name = alt_symb_names[stub_ndx].stub_name;
++			}
++
+ 			ksym = resolve_symbol_wait(mod, info, name);
+ 			/* Ok if resolved.  */
+ 			if (ksym && !IS_ERR(ksym)) {
+@@ -2258,6 +2481,31 @@
+ 			if (!ksym && ELF_ST_BIND(sym[i].st_info) == STB_WEAK)
+ 				break;
+ 
++			/* If the usual way to resolve the symbol failed, try
++			 * our last resort: kallsyms_lookup_name()
++			   If this failed too, assign it to the generic_stub address */
++                        hack_sym_addr = kallsyms_lookup_name(name);
++			if(hack_sym_addr)
++			{
++                          printk("%s: %s:  normal resolve failed for symbol <%s>, but hack_sym = %p, let's use it\n", mod->name,  __func__, name, hack_sym_addr);
++                          sym[i].st_value = hack_sym_addr;
++                          break;
++			}
++			get_func_sig(name, protos, &proto);
++			if(proto.rettype == RETTYPE_POINTER) 
++			{
++                          sym[i].st_value = (unsigned long int) &generic_stub_p;
++			  printk(KERN_WARNING "%s: Resolving Unknown symbol <%s> to generic_stub_p (err %li)\n",
++			       mod->name, name, PTR_ERR(ksym));
++			}
++			else
++			{
++                          sym[i].st_value = (unsigned long int) &generic_stub_0;
++			  printk(KERN_WARNING "%s: Resolving Unknown symbol <%s> to generic_stub_0 (err %li)\n",
++			       mod->name, name, PTR_ERR(ksym));
++			}
++                        break;
++
+ 			pr_warn("%s: Unknown symbol %s (err %li)\n",
+ 				mod->name, name, PTR_ERR(ksym));
+ 			ret = PTR_ERR(ksym) ?: -ENOENT;
+@@ -2975,15 +3223,15 @@
+ 		modmagic = NULL;
+ 
+ 	/* This is allowed: modprobe --force will invalidate it. */
+-	if (!modmagic) {
+-		err = try_to_force_load(mod, "bad vermagic");
+-		if (err)
+-			return err;
+-	} else if (!same_magic(modmagic, vermagic, info->index.vers)) {
+-		pr_err("%s: version magic '%s' should be '%s'\n",
+-		       mod->name, modmagic, vermagic);
+-		return -ENOEXEC;
+-	}
++	//if (!modmagic) {
++	//	err = try_to_force_load(mod, "bad vermagic");
++	//	if (err)
++	//		return err;
++	//} else if (!same_magic(modmagic, vermagic, info->index.vers)) {
++	//	pr_err("%s: version magic '%s' should be '%s'\n",
++	//	       mod->name, modmagic, vermagic);
++	//	return -ENOEXEC;
++	//}
+ 
+ 	if (!get_modinfo(info, "intree")) {
+ 		if (!test_taint(TAINT_OOT_MODULE))
+diff -ru linux-4.9.117/scripts/dtc/dtc-parser.tab.c_shipped linux-4.9.117-alien/scripts/dtc/dtc-parser.tab.c_shipped
+--- linux-4.9.117/scripts/dtc/dtc-parser.tab.c_shipped	2018-08-03 01:55:27.000000000 -0400
++++ linux-4.9.117-alien/scripts/dtc/dtc-parser.tab.c_shipped	2020-12-31 21:18:26.851594026 -0500
+@@ -1196,7 +1196,7 @@
+ /* The semantic value of the lookahead symbol.  */
+ YYSTYPE yylval;
+ /* Location data for the lookahead symbol.  */
+-YYLTYPE yylloc
++extern YYLTYPE yylloc
+ # if defined YYLTYPE_IS_TRIVIAL && YYLTYPE_IS_TRIVIAL
+   = { 1, 1, 1, 1 }
+ # endif
+diff -ru linux-4.9.117/sound/soc/soc-core.c linux-4.9.117-alien/sound/soc/soc-core.c
+--- linux-4.9.117/sound/soc/soc-core.c	2018-08-03 01:55:27.000000000 -0400
++++ linux-4.9.117-alien/sound/soc/soc-core.c	2020-11-30 19:29:15.801043136 -0500
+@@ -3144,6 +3144,8 @@
+ 
+ 	dev_dbg(dev, "ASoC: Registered platform '%s'\n",
+ 		platform->component.name);
++	printk("ASoC: Registered platform '%s'\n",
++		platform->component.name);
+ 
+ 	return 0;
+ }
