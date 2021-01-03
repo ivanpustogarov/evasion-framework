@@ -29,7 +29,7 @@ The first step is to checkout the xioami kernel and the commit with the vulnerab
 $ cd examples
 $ git clone https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git 
 $ git checkout cactus-p-oss
-$ git ee99fdb82cdafe8cd16dd516b9944e222f6db7e2
+$ git checkout ee99fdb82cdafe8cd16dd516b9944e222f6db7e2
 ```
 
 ## Vulnerability description
@@ -129,9 +129,43 @@ obj-y += camera_isp.o
 Then run `make`. You should get `camera_isp.ko`.
 
 
+## Patching vulnerable driver
+
+The driver we just compiled relies on some Xioami-specific functions. These function are not present in the evasion kernel. We need to tell the evasion kernel what to do with them. More specifically, we need to tell the kernel function prototypes for those functions, so that the evasion kernel can choose the right stub.
+
+
+First run this inside the xiaomi kernel tree:
+```
+$ cd examples/Xiaomi_Kernel_OpenSource/
+$ ctags -R --fields=+KmnSpt --c-kinds=f .
+$ cd ../../ # Should be at the root of the evasion framework now
+```
+
+Next go to `tools/patcher` and run the script to extract function prototypes.
+
+
+```
+$ cd tools/patcher
+$ ./funcsigs.pl ../../examples/Xiaomi_Kernel_OpenSource/drivers/misc/mediatek/cameraisp/src/mt6765/camera_isp.ko ../../examples/Xiaomi_Kernel_OpenSource/tags
+```
+
+Function prototypes will be extracted to inject/inject.c. Now we need to compile it and link with out module.
+
+```
+$ cd inject/
+$ export PATH="$PATH:$(realpath ../../../compilers/arm-eabi-4.8/bin/)"
+$ make
+$ arm-eabi-ld -r inject.o ../../../examples/Xiaomi_Kernel_OpenSource/drivers/misc/mediatek/cameraisp/src/mt6765/camera_isp.ko -o camera_isp-injected.ko
+```
+You should get file `camera_isp-injected.ko` which now contains an additional ELF section `protos` that has the function signatures.
+
+
 ## Building the evasion kernel
 
-Now we have the driver, in order to emuluate it, we need to load it to the evasion kernel.  In order to increase the probability of successfully loading the driver, the evasion kernel needs to be as close to the driver's host kernel (in our case the MSM kernel) as much as possible. By running `make kernelversion` inside xiaomi kernel tree, we can see that it's version is `v4.9.117`. Thus we will use the evasion kernel based on vanilla kernel 4.9.117.
+
+Now we have the driver. In order to execute it, we need to load it into a kernel. The original msm kernel won't run inside Qemu due to hardware dependencies that Qemu does not have (see our paper for details). Vanilla Linux kernel is not going to work either because the driver depends on msm kernel. Also the driver expects the peripheral it controls to be present (and Qemu does not have it). This is where our evasion kernel comes into play. It resolves all the dependencies in a generic way.
+
+Now we have the driver, in order to emuluate it, we need to load it to the evasion kernel.  In order to increase the probability of successfully loading the driver, the evasion kernel needs to be as close to the driver's host kernel as much as possible. By running `make kernelversion` inside xiaomi kernel tree, we can see that it's version is `v4.9.117`. Thus we will use the evasion kernel based on vanilla kernel 4.9.117.
 
 The evasion kernel is a modification of the Linux vanilla kernel. In order safe space, we distribute patches that will make evasion kernel from the vanilla kernel. The patches for 4.9.117 are in `evasion-kernels/patches/4.9.117/`. First download the vanilla kernel, and apply the patch and copy missing files.
 
@@ -141,8 +175,8 @@ $ wget https://mirrors.edge.kernel.org/pub/linux/kernel/v4.x/linux-4.9.117.tar.x
 $ tar -xf linux-4.9.117.tar.xz
 $ mv linux-4.9.117 linux-4.9.117-evasion
 $ rm linux-4.9.117.tar.xz
-$ patch -d linux-4.9.117-evasion -p1 <patches/4.9.117/linux-4.9.117.alien-patch
-$ cp patches/4.9.117/* linux-4.9.117-evasion
+$ patch -d linux-4.9.117-evasion -p1 <patches/4.9.117/linux-4.9.117-evasion.patch
+$ cp -r patches/4.9.117/* linux-4.9.117-evasion
 ```
 
 Now you can build the evasion kernel:
@@ -154,6 +188,7 @@ $ ./make.sh
 ```
 
 As a sanity check you can try to emulate the kernel by running `run-arm-kernel-4.9.sh`.
+Use name is `root`, password is `1`.
 
 
 ## Adjusting evasion kernel configuration
@@ -162,16 +197,15 @@ Our driver was compiled against a specific xiaomi kernel configuration. In parti
 
 In order to verify that layouts are the same, we use a special kernel module that lists all the fields in the aforementioned structures. We compile this module against the evasion and xioami kernels and look if the layouts of these structures are different.
 
-### Copy checkoofset module and build it
+### Copy testkoofset module and build it
 
 The module we are going to use is called `testoffsets.ko`, and it located in `evasion-kernels/mymodules/testoffsets`. You need to copy to and compile against both the evasion kernel and the xioami kernels.
 
 ```
-$ 
 $ cp -r evasion-kernels/mymodules examples/Xiaomi_Kernel_OpenSource
 $ cp -r evasion-kernels/mymodules evasion-kernels/linux-4.9.117-evasion
-$ make -C examples/Xiaomi_Kernel_OpenSource/mymodules/testoffsets
-$ make -C evasion-kernels/linux-4.9.117-evasion/mymodules/testoffsets
+$ cd examples/Xiaomi_Kernel_OpenSource/mymodules/testoffsets && make && cd -
+$ cd evasion-kernels/linux-4.9.117-evasion/mymodules/testoffsets && make && cd -
 ```
 
 ### Compare `struct dev` and `struct file` layouts
@@ -180,17 +214,20 @@ Now we need to compare the modules.
 First check offsets of `struct file`.
 
 ```
-./compare-offsets.py -v evasion-kernels/linux-4.9.117-evasion/mymodules/testoffsets/testoffsets.ko -x examples/Xiaomi_Kernel_OpenSource/mymodules/checkoffsets/testoffsets.ko --file
+./tools/compare-offsets/compare-offsets.py -v evasion-kernels/linux-4.9.117-evasion/mymodules/testoffsets/testoffsets.ko -x examples/Xiaomi_Kernel_OpenSource/mymodules/testoffsets/testoffsets.ko --file
 ```
 
-It should tell you that you CONFIG_SECURITY is not set in the evasion kernel. Set it, recompile. Ater this step, the layouts of `struct device` and `struct file` should be the same.
+It should tell you that you CONFIG_SECURITY is not set in the evasion kernel. Set it, recompile the kernel and *recompile the testoffsets module*. Ater this step, the layouts of `struct device` and `struct file` should be the same.
 
 
 ```
-./compare-offsets.py -v evasion-kernels/linux-4.9.117-evasion/mymodules/testoffsets/testoffsets.ko -x examples/Xiaomi_Kernel_OpenSource/mymodules/checkoffsets/testoffsets.ko --dev
+./tools/compare-offsets/compare-offsets.py -v evasion-kernels/linux-4.9.117-evasion/mymodules/testoffsets/testoffsets.ko -x examples/Xiaomi_Kernel_OpenSource/mymodules/testoffsets/testoffsets.ko --dev
 ```
 
-It should say that there is a offset mismatch between tokens 83 87. This is bit cryptic becuase the script is not finished (contributions are welcome).  You need to look at testoffsets.c to see what configuration options are responsbile for these tokens. This is the part between these tokens:
+It should say that offsets match. Go to the next section.
+
+*Note*.
+Sometime It might say that there is a offset mismatch between tokens 83 87. This is bit cryptic becuase the script is not finished (contributions are welcome).  You need to look at testoffsets.c to see what configuration options are responsbile for these tokens. This is the part between these tokens:
 
 ```
 261   quasi_print((uint32_t)&dev_local->pm_domain,INIT_TOKEN+83);
@@ -212,81 +249,7 @@ It should say that there is a offset mismatch between tokens 83 87. This is bit 
 Thus you need to check if the following config options are present/missing in both the evasion and xioami kernels. As you will find out `PINCTRL` option is set in Xiaomi kernel and is missing in the evasion kernel. Thus you need to enable this option in the evasion kernel. Relunch menuconfig, set the option and recompile the kernel and the testoffsets.ko module. This should fix the offset descripancy.
 
 
-### Patching vulnerable driver
-
-The driver we just compiled relies on some Xioami-specific functions. These function are not present in the evasion kernel. We need to tell the evasion kernel what to do with them. More specifically, we need to tell the kernel function prototypes for those functions, so that the evasion kernel can choose the right stub.
-
-First ru this inside the xiaomi kernel tree:
-```
-ctags -R --fields=+KmnSpt --c-kinds=f .
-```
-
-Next go to `evasion-framework/fuzzer/patcher`.
-and run the following command
-1. Install necessary perl modules.
-```
-sudo cpan Binutils::Objdump
-sudo cpan Parse::ExuberantCTags
-```
-2. Run the script to extract function prototypes.
-```
-./funcsigs.pl ../../examples/Xiaomi_Kernel_OpenSource/drivers/misc/mediatek/cameraisp/src/mt6765/camera_isp.ko ../../examples/Xiaomi_Kernel_OpenSource/tags
-```
-
-Function prototypes will be extracted to inject/inject.c. Now we need to compile it and link with out module.
-
-```
-cd inject/
-export PATH="$PATH:$(realpath ../../../compilers/arm-eabi-4.8/bin/)"
-make
-arm-eabi-ld -r inject.o ../../../examples/Xiaomi_Kernel_OpenSource/drivers/misc/mediatek/cameraisp/src/mt6765/camera_isp.ko -o camera_isp-injected.ko
-```
-You should get file `camera_isp-injected.ko` which now contains an additional ELF section `protos` that has the function signatures.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-Now we have the driver. In order to execute it, we need to load it into a kernel. The original msm kernel won't run inside Qemu due to hardware dependencies that Qemu does not have (see our paper for details). Vanilla Linux kernel is not going to work either because the driver depends on msm kernel. Also the driver expects the peripheral it controls to be present (and Qemu does not have it). 
-
-This is where our evasion kernel comes into play. It resolves all the dependencies in a generic way.
-
-
-
-
-
-
-### Configure evasion kernel 
-
-Our driver was compiled against a specific kernel configuration. In particluar, kernel configuration defines: (a) kernel subsystems, (b) layout of various kernel structures that are used by the driver. Drivers that implement IOCTL interface use at least the following kernel structures: `struct device` and `struct file`. It is critical for the evasion kernel to have the same layout for these structures. In order to help with this, 
-
-
-Because of this it is critical that the evasion kernel has some of the configuraiton options identical to the driver's host kernel.
-
-It is very important that the evasion kernel has the same configuration option for 
-
-to configure the evasion kernel the same way.
-
-```
-$ cd evasion-kernels/linux-3.10-alien
-$ ./configure.sh
-$ ./make.sh
-```
-
-
-
-### Patching device tree file
+## Patching device tree file
 The driver expects a specific peripheral to be present. We don't emulate the device. Instead we make the kernel and the driver believe that the peripheral is persent. In order to do that we add a device tree entry to the devce tree file. The first step is to identify the device tree entry name. In order to find the name of the device tree nodes expected by the driver you can grep `compatible` property.
 
 ```
@@ -308,10 +271,9 @@ This shoud give you the following list:
  { .compatible = "mediatek,camsv3", },
  { .compatible = "mediatek,camsv4", },
  { .compatible = "mediatek,camsv5", },
- /*{ .compatible = "mediatek,camsv6", },
 ```
 
-When we compiled the xiaomi kernel, it also compiled some of the device tree files. They can be found in `arch/arm/boot/dts/`. One of them is arch/arm/boot/dts/mt6765.dtb. Let's see if it contains our entries:
+The necessary device tree file entries should come with the xiaomi kernel. They can be found in `arch/arm/boot/dts/`. One of them is arch/arm/boot/dts/mt6765.dtb. Let's see if it contains our entries:
 ```
 $ grep mediatek,imgsys  arch/arm/boot/dts/mt6756.dtb
 Binary file arch/arm/boot/dts/mt6765 matches
@@ -319,32 +281,10 @@ Binary file arch/arm/boot/dts/mt6765 matches
 It contains the first device tree node. We need to copy it to the evasion kernel's device tree file. You can use `evasion-framework/fuzzer/fdt-extract/fdtextract` program to do this:
 
 ```
-$ ./fdtextract -f /home/ivan/prj/evasion-framework/examples/Xiaomi_Kernel_OpenSource/arch/arm/boot/dts/mt6765.dtb -t /home/ivan/prj/evasion-framework/evasion-kernels/linux-4.9.117-alien/arch/arm/boot/dts/vexpress-v2p-ca15-tc1.dtb "mediatek,imgsys"
-Going to extract node 'mediatek,imgsys'
-from file: '/home/ivan/prj/evasion-framework/examples/Xiaomi_Kernel_OpenSource/arch/arm/boot/dts/mt6765.dtb' and inject it
-into file: '/home/ivan/prj/evasion-framework/evasion-kernels/linux-4.9.117-alien/arch/arm/boot/dts/vexpress-v2p-ca15-tc1.dtb'
-
-[+] Loading dtb's: '/home/ivan/prj/evasion-framework/examples/Xiaomi_Kernel_OpenSource/arch/arm/boot/dts/mt6765.dtb', '/home/ivan/prj/evasion-framework/evasion-kernels/linux-4.9.117-alien/arch/arm/boot/dts/vexpress-v2p-ca15-tc1.dtb'
-[+] Found node 'imgsys@15020000' (compatible = 'mediatek,imgsys') in the host dtb
-[+] Analyzing node
-    Found #interrupt-cells in node intpol-controller@10200a80
-    interrupt cells = 3
-    Looking for node's parent in host dtb
-    After checking the parent: the node is NOT an i2c device.
-[+] Preparing new empty node under root in evasion dtb
-[+] Copying host node's properties into the prepared empty node
-    + copying property compatible, len = 23
-    + copying property reg, len = 16
-    + copying property #clock-cells, len = 4
-    + copying property clocks, len = 80
-    + copying property clock-names, len = 154
-    - skipping 'linux,phandle' property
-    = replacing 'phandle' property with a newly generated value
-[+] Backing up evasion dtb into 'backup.dtb'
-[+] Rewriting the original evasion dtb file
+$ ./fdtextract -f ../../examples/Xiaomi_Kernel_OpenSource/arch/arm/boot/dts/mt6765.dtb -t ../../evasion-kernels/linux-4.9.117-evasion/arch/arm/boot/dts/vexpress-v2p-ca15-tc1.dtb "mediatek,imgsys"
 ```
 
-Now repeat the same for nodes 
+Now repeat the same for nodes. (Usualyy you will need just one device tree entry, but his specific example requires many).
 
 ```
 mediatek,dip1 
@@ -382,25 +322,18 @@ In this case we will create generic nodes using the same program (`fdtextract`):
 ```
 $ ./fdtextract -f none -t /home/ivan/prj/evasion-framework/evasion-kernels/linux
 -4.9.117-alien/arch/arm/boot/dts/vexpress-v2p-ca15-tc1.dtb "mediatek,camsv0"
-[+] Going to create a new node 'mediatek,camsv0' in file '/home/ivan/prj/evasion-framework/evasion-kernels/linux-4.9.117-alien/arch/arm/boot/dts/vexpress-v2p-ca15-tc1.dtb'
-[+] Loading dtb: '/home/ivan/prj/evasion-framework/evasion-kernels/linux-4.9.117-alien/arch/arm/boot/dts/vexpress-v2p-ca15-tc1.dtb'
-[+] Preparing new empty node 'generic_node_94068169@4ba00000' under root in evasion dtb
-[+] Adding new fields
-[+] Adding dummy subnode 'generic_subnode_1137472617'
-[+] Backing up evasion dtb into 'backup.dtb'
-[+] Rewriting the original evasion dtb file
 ```
 (repeat for other nodes).
 
 
-### Loading the driver inside the evasion kernel
+## Loading the driver inside the evasion kernel
 Now we should be ready to load our driver inside the evasion kernel.
 
 ```
-cd evasion-kernels/linux-4.9.117-alien
-run-arm-kernel-4.9.sh
+$ cd evasion-kernels/linux-4.9.117-evasion
+$ ./run-arm-kernel-4.9.sh
 # Go to the inject folder with the patched module
-scp camera_isp-injected.ko root@192.168.99.36:
+$ scp camera_isp-injected.ko root@192.168.99.36:
 ```
 
 In the evasion kernel in Qemu:

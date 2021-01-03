@@ -26,13 +26,22 @@ git checkout aosp-new/pie-release
 cd ../
 
 ## >> 2. Get and build Qemu <<
+cd ../
 wget https://download.qemu.org/qemu-3.1.1.tar.xz
 tar -xf qemu-3.1.1.tar.xz
+rm qemu-3.1.1.tar.xz
 cd qemu-3.1.1/
 ./configure --target-list=arm-softmmu
 make -j3
 
 ## >> 3. Install Unicorn <<
-sudo dnf install python2-setuptools.noarch
+cd ../
+#sudo dnf install python2-setuptools.noarch
 git clone https://github.com/ivanpustogarov/afl-unicorn.git
 bash -c "cd afl-unicorn && make && cd unicorn_mode && sudo ./build_unicorn_support.sh"
+
+## >> 4. Install some perl modules <<
+sudo cpan Binutils::Objdump
+sudo cpan Parse::ExuberantCTags
+sudo cpan Net::OpenSSH
+sudo cpan Devel::GDB
