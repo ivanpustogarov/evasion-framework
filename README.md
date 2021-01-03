@@ -11,8 +11,8 @@ Project description
 
 The core of the evasion framework are evasion kernels.
 
-## Dependencies
-### Download cross compilers and Qemu 3.1.1
+# Dependencies
+## Download cross compilers and Qemu 3.1.1
 
 You will need ARM cross compilers to compile the evasion kernels. You will aslo need to have Qemu 3.10 to emulate the kernels. You can use script `setup.sh` to fetch compilers from codeaurora into 'compilers' folder and Qemu into 'qemu-3.1.1' folder
 
@@ -20,256 +20,21 @@ You will need ARM cross compilers to compile the evasion kernels. You will aslo 
 $ ./setup.sh
 ```
 
-## Example/Tutorial
+# Example/Tutorial
 
-Evasion framework is a complex project that includes many parts. One way to understand what each part does is to demostrate how they are used with an example. In our first example we will use the evasion framework to rediscover CVE-2014-9782 (https://www.cvedetails.com/cve/CVE-2014-9782/):
-
-```
-drivers/media/platform/msm/camera_v2/sensor/actuator/msm_actuator.c in the
-Qualcomm components in Android before 2016-07-05 on Nexus 5 and 7 (2013)
-devices does not validate direction and step parameters, which allows attackers
-to gain privileges via a crafted application, aka Android internal bug 28431531
-and Qualcomm internal bug CR511349.
-```
-
-### Get (download) the driver
-The bug resides in an IOCTL handler of the corresponding driver. Our goal is to fuzz this driver on our desktop computer and find a crash. Let's download the correspdonding Android kernel that has the vulnerable driver.  CVE-2014-9782 was fixed in the current version, so we need to checkout the commit where this bug was still present (in order find out the commit, got to  and check the parent commit).
+Evasion framework is a complex project that includes many parts. One way to understand what each part does is to demostrate how they are used with an example. We will rediscover a vulnerability in Xiaomi REDMI6 kernel.
+The first step is to checkout the xioami kernel and the commit with the vulnerability.
 
 ```
-$ mkdir examples
-$ git clone https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git
-$ git checkout ee99fdb82cdafe8cd16dd516b9944e222f6db7e2
+$ cd examples
+$ git clone https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git 
+$ git checkout cactus-p-oss
+$ git ee99fdb82cdafe8cd16dd516b9944e222f6db7e2
 ```
 
-### Compile the driver
-Now we have the right kernel tree. 
-
-With Android kernel, there are two ways to compile a driver: a)
-built-in (i.e. a part of vmlinux binary) or b) a loadable kernel module.
-We will need to compile the driver as a kernel loadable module. The first step is to compile the kernel. 
-
-```
-$ export PATH="$PATH:$(realpath ../../compilers/arm-eabi-4.6/bin)"
-$ make O=msm-kernel-build ARCH=arm msm8610_defconfig
-$ make O=msm-kernel-build ARCH=arm CROSS_COMPILE=arm-eabi- -j3
-
-```
-
-If you see the following error during the complication:
-`/usr/bin/ld: scripts/dtc/dtc-parser.tab.o:(.bss+0x50): multiple definition of ``yylloc'; scripts/dtc/dtc-lexer.lex.o:(.bss+0x0): first defined here`,
-replace definition of `YYLTYPE yylloc;` with `extern YYLTYPE yylloc;`
-
-
-The second step is to compile the driver. 
-
-The driver consists of two parts: msm subsystem and the actuator sensor driver:
-`msm.ko` and `msm_actuator.ko`.  You can compile the driver anyway you want
-(for example you can find the corresponding config options).  I prefer to
-modify the corresponding Makefiles.
-
-The source code for the driver is located in 
-`drivers/media/platform/msm/camera_v2` and `drivers/media/platform/msm/camera_v2/sensor/actuator`.
-
-You'll need to make the following modifications to the corresponding Makefiles (the diff looks a bit big, but its due to the context, only a few lines were modified/added):
-
-```
-diff --git a/drivers/media/platform/msm/camera_v2/Makefile b/drivers/media/platform/msm/camera_v2/Makefile
-index 02eb3dd0584c..09559fef6420 100644
---- a/drivers/media/platform/msm/camera_v2/Makefile
-+++ b/drivers/media/platform/msm/camera_v2/Makefile
-@@ -7,13 +7,20 @@ ccflags-y += -Idrivers/media/platform/msm/camera_v2/msm_vb2
- ccflags-y += -Idrivers/media/platform/msm/camera_v2/camera
- ccflags-y += -Idrivers/media/platform/msm/camera_v2/jpeg_10
-
--obj-$(CONFIG_MSMB_CAMERA) += msm.o
-+obj-m += msm.o
- obj-$(CONFIG_MSMB_CAMERA) += camera/
- obj-$(CONFIG_MSMB_CAMERA) += msm_vb2/
--obj-$(CONFIG_MSMB_CAMERA) += sensor/
-+obj-m += sensor/
- obj-$(CONFIG_MSMB_CAMERA) += isp/
- obj-$(CONFIG_MSMB_CAMERA) += ispif/
- obj-$(CONFIG_MSMB_JPEG) += jpeg_10/
- obj-$(CONFIG_MSMB_CAMERA) += msm_buf_mgr/
- obj-$(CONFIG_MSMB_CAMERA) += pproc/
- obj-$(CONFIG_MSMB_CAMERA) += gemini/
-+
-+
-+all:
-+               make -C ../../../../../ O=msm-kernel-build M=$(PWD) ARCH=arm CROSS_COMPILE=arm-eabi- modules
-+
-+clean:
-+               rm -f *.ko *.o
-diff --git a/drivers/media/platform/msm/camera_v2/sensor/Makefile b/drivers/media/platform/msm/camera_v2/sensor/Makefile
-index bd1b10ba2af7..829caec5a6d8 100644
---- a/drivers/media/platform/msm/camera_v2/sensor/Makefile
-+++ b/drivers/media/platform/msm/camera_v2/sensor/Makefile
-@@ -3,7 +3,8 @@ ccflags-y += -Idrivers/media/platform/msm/camera_v2/msm_vb2
- ccflags-y += -Idrivers/media/platform/msm/camera_v2/camera
- ccflags-y += -Idrivers/media/platform/msm/camera_v2/sensor/io
- ccflags-y += -Idrivers/media/platform/msm/camera_v2/sensor/cci
--obj-$(CONFIG_MSMB_CAMERA) += cci/ io/ csiphy/ csid/ actuator/ flash/ eeprom/
-+#obj-$(CONFIG_MSMB_CAMERA) += cci/ io/ csiphy/ csid/ actuator/ flash/ eeprom/
-+obj-m += actuator/
- obj-$(CONFIG_MSM_CAMERA_SENSOR) += msm_sensor.o
- obj-$(CONFIG_S5K3L1YX) += s5k3l1yx.o
- obj-$(CONFIG_IMX135) += imx135.o
-diff --git a/drivers/media/platform/msm/camera_v2/sensor/actuator/Makefile b/drivers/media/platform/msm/camera_v2/sensor/actuator/Makefile
-index c0d607f731ba..c2b02d7a44b6 100644
---- a/drivers/media/platform/msm/camera_v2/sensor/actuator/Makefile
-+++ b/drivers/media/platform/msm/camera_v2/sensor/actuator/Makefile
-@@ -1,4 +1,5 @@
- ccflags-y += -Idrivers/media/platform/msm/camera_v2
- ccflags-y += -Idrivers/media/platform/msm/camera_v2/sensor/io
- ccflags-y += -Idrivers/media/platform/msm/camera_v2/sensor/cci
--obj-$(CONFIG_MSMB_CAMERA) += msm_actuator.o
-+#obj-$(CONFIG_MSMB_CAMERA) += msm_actuator.o
-+obj-m += msm_actuator.o
-```
-
-I also had some problems compiling the driver, maybe it's due to compiler version. So I had to fix the errors emmitted by the compiler. Here are my modifications:
-
-```
-diff --git a/drivers/media/platform/msm/camera_v2/msm.c b/drivers/media/platform/msm/camera_v2/msm.c
-index da2f9005208c..7d5c20335a2a 100644
---- a/drivers/media/platform/msm/camera_v2/msm.c
-+++ b/drivers/media/platform/msm/camera_v2/msm.c
-@@ -1026,8 +1026,8 @@ probe_end:
- }
-
- static const struct of_device_id msm_dt_match[] = {
--       {.compatible = "qcom,msm-cam"},
--}
-+       {.compatible = "qcom,msm-cam"}, {}
-+};
-
- MODULE_DEVICE_TABLE(of, msm_dt_match);
-diff --git a/drivers/media/platform/msm/camera_v2/sensor/actuator/msm_actuator.c b/drivers/media/platform/msm/camera_v2/sensor/actuator/msm_actuator.c
-index 87178b720c4c..75cd0a818a02 100644
---- a/drivers/media/platform/msm/camera_v2/sensor/actuator/msm_actuator.c
-+++ b/drivers/media/platform/msm/camera_v2/sensor/actuator/msm_actuator.c
-@@ -849,7 +849,8 @@ MODULE_DEVICE_TABLE(of, msm_actuator_i2c_dt_match);
- static struct i2c_driver msm_actuator_i2c_driver = {
-        .id_table = msm_actuator_i2c_id,
-        .probe  = msm_actuator_i2c_probe,
--       .remove = __exit_p(msm_actuator_i2c_remove),
-+       //.remove = __exit_p(msm_actuator_i2c_remove),
-+       .remove = NULL,
-        .driver = {
-                .name = "qcom,actuator",
-                .owner = THIS_MODULE,
-diff --git a/scripts/dtc/dtc-parser.tab.c_shipped b/scripts/dtc/dtc-parser.tab.c_shipped
-index ee1d8c3042fb..c8c8ca8b744f 100644
---- a/scripts/dtc/dtc-parser.tab.c_shipped
-+++ b/scripts/dtc/dtc-parser.tab.c_shipped
-@@ -73,7 +73,7 @@
- #include "dtc.h"
- #include "srcpos.h"
-
--YYLTYPE yylloc;
-+extern YYLTYPE yylloc;
-
- extern int yylex(void);
- extern void print_error(char const *fmt, ...);
-```
-
-After these modifications and running `make` inside `drivers/media/platform/msm/camera_v2` folder., I have `msm.ko` and `msm_actuaotr.ko` in the corresponding folders.
-
-
-Now we have the driver. In order to execute it, we need to load it into a kernel. The original msm kernel won't run inside Qemu due to hardware dependencies that Qemu does not have (see our paper for details). Vanilla Linux kernel is not going to work either because the driver depends on msm kernel. Also the driver expects the peripheral it controls to be present (and Qemu does not have it). 
-
-This is where our evasion kernel comes into play. It resolves all the dependencies in a generic way.
-
-### Choose evasion kernel version
-
-In order to increase the probability of successfully loading the driver, the evasion kernel needs to be as close to the driver's host kernel (in our case the MSM kernel) as much as possible. By running `make kernelvercion` inside msm kernel tree, we can see that it's version is `v3.10`. Thus we choose to use `evasion-kernels/linux-3.10-alien`.
-
-
-### Configure evasion kernel 
-
-Our driver was compiled against a specific kernel configuration. In particluar, kernel configuration defines: (a) kernel subsystems, (b) layout of various kernel structures that are used by the driver. Drivers that implement IOCTL interface use at least the following kernel structures: `struct device` and `struct file`. It is critical for the evasion kernel to have the same layout for these structures. In order to help with this, 
-
-
-Because of this it is critical that the evasion kernel has some of the configuraiton options identical to the driver's host kernel.
-
-It is very important that the evasion kernel has the same configuration option for 
-
-to configure the evasion kernel the same way.
-
-```
-$ cd evasion-kernels/linux-3.10-alien
-$ ./configure.sh
-$ ./make.sh
-```
-
-
-### Building Xiaomi kernel
-
-
-1. Build
-export PATH="$PATH:$(realpath ../../compilers/arm-linux-androideabi-4.9/bin)"
-make ARCH=arm CROSS_COMPILE=arm-linux-androideabi- cactus_defconfig
-(fix extern yylloc and python2)
-
-Replace drivers/devfreq/helio-dvfsrc-opp.c:14:26 
- #include <helio-dvfsrc.h> with #include "helio-dvfsrc.h"
-
-In
- drivers/devfreq/helio-dvfsrc.h replace
- #include <helio-dvfsrc-mt6765.h> with #include "helio-dvfsrc-mt6765.h"
-
-2. Copy checkoofset module and build it
-inside xiomi kernel:
-mkdir mymudules
-cp -r evasion-kernels/linux-4.9.117-alien/mymodules/checkoffsets mymodules/
-
-./compare-offsets.py -v testoffsets.ko -x /home/ivan/prj/evasion-framework/examples/Xiaomi_Kernel_OpenSource/mymodules/checkoffsets/testoffsets.ko --dev
-It should say that there is a offset mismatch between tokens 83 87. You need to look at testoffsets.c to see what configuration options are responsbile for these tokens. This is the part between these tokens:
-
-```
-261   quasi_print((uint32_t)&dev_local->pm_domain,INIT_TOKEN+83);
-262   #ifdef CONFIG_GENERIC_MSI_IRQ_DOMAIN
-263   quasi_print((uint32_t)&dev_local->msi_domain,INIT_TOKEN+84);
-264   #endif
-265   #ifdef PINCTRL
-266   quasi_print((uint32_t)&dev_local->pins,TOKEN_RANGE1+6);
-267   #endif
-268   #ifdef CONFIG_GENERIC_MSI_IRQ
-269   quasi_print((uint32_t)&dev_local->msi_list,INIT_TOKEN+85);
-270   #endif
-271   #ifdef CONFIG_NUMA
-272   quasi_print((uint32_t)&dev_local->numa_node,INIT_TOKEN+86);
-273   #endif
-274   quasi_print((uint32_t)&dev_local->dma_mask,INIT_TOKEN+87);
-```
-
-Thus you need to check if the following config options are present/missing in both the evasion and xioami kernels. As you will find out PINCTRL option is set in Xiaomi kernel and is missing in the evasion kernel. Thus you need to enable this option in the evasion kernel. The future version of the script will tell you the name of config options (contributions are welcome).
-
-You cannot enable this option using menuconfig. In order to enable it modify it entry in drivers/pinctrl/Kconfig:
-
-```
-  5 config PINCTRL
-  6         bool "PINCTRL support"
-  7         default y
-  8         ---help---
-  9                 Pin ctrl.
-```
-
-and relunch menuconfig, set the option and recompile the kernel and the testoffsets.ko module. This should fix the offset descripancy.
-Now let's check offsets of `struct file`.
-
-```
-./compare-offsets.py -v testoffsets.ko -x /home/ivan/prj/evasion-framework/examples/Xiaomi_Kernel_OpenSource/mymodules/checkoffsets/testoffsets.ko --file
-```
-
-It should tell you that you CONFIG_SECURITY is not set in the evasion kernl. Set it, recompile. Ater this step, the layouts of `struct device` and `struct file` should be the same.
-
-IMPORTANT: also enable BLK_DEV_IO_TRACE in the evasion kernel.
-
-
-### Vulnerability
+## Vulnerability description
 Here is the description of the vulnrability:
-ZERO_SIZE_PTR dereference in ./drivers/misc/mediatek/cameraisp/src/mt6765/camera_isp.c (https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git, branch "cactus-p-oss")
+ZERO_SIZE_PTR dereference in ./drivers/misc/mediatek/cameraisp/src/mt6765/camera_isp.c (https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git.
 
 A local application can issue ISP_WRITE_REGISTER ioctl and cause a ZERO_SIZE_PTR (equals 0x10) dereference due to that the
 return value of kmalloc(0) is checked against NULL but not against ZERO_SIZE_PTR.
@@ -308,7 +73,33 @@ static signed int ISP_WriteRegToHw(
 In more detail, when a userspace program calls ISP_WRITE_REGISTER ioctl, it can set pRegIo->Count to 0. kmalloc() is thus called with zero size which returns ZERO_SIZE_PTR = 0x10 (https://lwn.net/Articles/236809/). The driver however only checks if the return value is NULL (i.e. the case the kernel is out of memory), but does not check for ZERO_SIZE_PTR. The driver continues execution and calls ISP_WriteRegToHw(pData,...). Inside function ISP_WriteRegToHw(), pReg=ZERO_SIZE_PTR is dereferences (line module = pReg->module;).
 
 
-### Compiling vulnerable driver
+## Building Xiaomi kernel
+
+If you see the following error during the complication:
+`/usr/bin/ld: scripts/dtc/dtc-parser.tab.o:(.bss+0x50): multiple definition of ``yylloc'; scripts/dtc/dtc-lexer.lex.o:(.bss+0x0): first defined here`,
+replace definition of `YYLTYPE yylloc;` with `extern YYLTYPE yylloc;`
+
+Also some of the pythong scripts might expect python2, if you use python3 by default, fix this by replacing `#! /usr/bin/python` with `#! /usr/bin/python2` in failing scripts.
+
+```
+export PATH="$PATH:$(realpath ../../compilers/arm-linux-androideabi-4.9/bin)"
+make ARCH=arm CROSS_COMPILE=arm-linux-androideabi- cactus_defconfig
+make ARCH=arm CROSS_COMPILE=arm-linux-androideabi- -j3
+```
+
+You probably will see missing header files during compilation. This should probably be reported to the xiaomi developers. However we are not interested in compiling the xiaomi kernel actually, we just need to generated autogenerated files to be able to compile the vulnerable module. So you can safely move to the next section.
+
+*But* if you really want to compile the xioami kernel, you can fix the errors by:
+Replace drivers/devfreq/helio-dvfsrc-opp.c:14:26 
+ `#include <helio-dvfsrc.h>` with `#include "helio-dvfsrc.h"`
+
+In
+ drivers/devfreq/helio-dvfsrc.h replace
+ `#include <helio-dvfsrc-mt6765.h>` with `#include "helio-dvfsrc-mt6765.h"`
+
+and so on.
+
+## Compiling vulnerable driver
 We need to compile the driver as a kernel module (.ko file).
 
 We assume you are in xioami folder.
@@ -336,6 +127,89 @@ obj-y += camera_isp.o
 ```
 
 Then run `make`. You should get `camera_isp.ko`.
+
+
+## Building the evasion kernel
+
+Now we have the driver, in order to emuluate it, we need to load it to the evasion kernel.  In order to increase the probability of successfully loading the driver, the evasion kernel needs to be as close to the driver's host kernel (in our case the MSM kernel) as much as possible. By running `make kernelversion` inside xiaomi kernel tree, we can see that it's version is `v4.9.117`. Thus we will use the evasion kernel based on vanilla kernel 4.9.117.
+
+The evasion kernel is a modification of the Linux vanilla kernel. In order safe space, we distribute patches that will make evasion kernel from the vanilla kernel. The patches for 4.9.117 are in `evasion-kernels/patches/4.9.117/`. First download the vanilla kernel, and apply the patch and copy missing files.
+
+```
+$ cd evasion-kernels
+$ wget https://mirrors.edge.kernel.org/pub/linux/kernel/v4.x/linux-4.9.117.tar.xz 
+$ tar -xf linux-4.9.117.tar.xz
+$ mv linux-4.9.117 linux-4.9.117-evasion
+$ rm linux-4.9.117.tar.xz
+$ patch -d linux-4.9.117-evasion -p1 <patches/4.9.117/linux-4.9.117.alien-patch
+$ cp patches/4.9.117/* linux-4.9.117-evasion
+```
+
+Now you can build the evasion kernel:
+```
+$ cd linux-4.9.117-evasion
+$ ./configure.sh
+$ ./menuconfig # <---- IMPORTANT: go to kernel hacking->tracers and enable "Support for tracing block IO actions"
+$ ./make.sh
+```
+
+As a sanity check you can try to emulate the kernel by running `run-arm-kernel-4.9.sh`.
+
+
+## Adjusting evasion kernel configuration
+
+Our driver was compiled against a specific xiaomi kernel configuration. In particluar, this kernel configuration defines: (a) kernel subsystems, (b) layout of various kernel structures that are used by the driver. Drivers that implement IOCTL interface use at least the following kernel structures: `struct device` and `struct file`. It is *critical* for the evasion kernel to have the same layouts for these structures (i.e. the same fields at the same offsets). Because of this it is critical that the configuration options that appear in definitions of `struct device` and `struct file` are the same in the xiaomi and evasion kernel.
+
+In order to verify that layouts are the same, we use a special kernel module that lists all the fields in the aforementioned structures. We compile this module against the evasion and xioami kernels and look if the layouts of these structures are different.
+
+### Copy checkoofset module and build it
+
+The module we are going to use is called `testoffsets.ko`, and it located in `evasion-kernels/mymodules/testoffsets`. You need to copy to and compile against both the evasion kernel and the xioami kernels.
+
+```
+$ 
+$ cp -r evasion-kernels/mymodules examples/Xiaomi_Kernel_OpenSource
+$ cp -r evasion-kernels/mymodules evasion-kernels/linux-4.9.117-evasion
+$ make -C examples/Xiaomi_Kernel_OpenSource/mymodules/testoffsets
+$ make -C evasion-kernels/linux-4.9.117-evasion/mymodules/testoffsets
+```
+
+### Compare `struct dev` and `struct file` layouts
+Now we need to compare the modules.
+
+First check offsets of `struct file`.
+
+```
+./compare-offsets.py -v evasion-kernels/linux-4.9.117-evasion/mymodules/testoffsets/testoffsets.ko -x examples/Xiaomi_Kernel_OpenSource/mymodules/checkoffsets/testoffsets.ko --file
+```
+
+It should tell you that you CONFIG_SECURITY is not set in the evasion kernel. Set it, recompile. Ater this step, the layouts of `struct device` and `struct file` should be the same.
+
+
+```
+./compare-offsets.py -v evasion-kernels/linux-4.9.117-evasion/mymodules/testoffsets/testoffsets.ko -x examples/Xiaomi_Kernel_OpenSource/mymodules/checkoffsets/testoffsets.ko --dev
+```
+
+It should say that there is a offset mismatch between tokens 83 87. This is bit cryptic becuase the script is not finished (contributions are welcome).  You need to look at testoffsets.c to see what configuration options are responsbile for these tokens. This is the part between these tokens:
+
+```
+261   quasi_print((uint32_t)&dev_local->pm_domain,INIT_TOKEN+83);
+262   #ifdef CONFIG_GENERIC_MSI_IRQ_DOMAIN
+263   quasi_print((uint32_t)&dev_local->msi_domain,INIT_TOKEN+84);
+264   #endif
+265   #ifdef PINCTRL
+266   quasi_print((uint32_t)&dev_local->pins,TOKEN_RANGE1+6);
+267   #endif
+268   #ifdef CONFIG_GENERIC_MSI_IRQ
+269   quasi_print((uint32_t)&dev_local->msi_list,INIT_TOKEN+85);
+270   #endif
+271   #ifdef CONFIG_NUMA
+272   quasi_print((uint32_t)&dev_local->numa_node,INIT_TOKEN+86);
+273   #endif
+274   quasi_print((uint32_t)&dev_local->dma_mask,INIT_TOKEN+87);
+```
+
+Thus you need to check if the following config options are present/missing in both the evasion and xioami kernels. As you will find out `PINCTRL` option is set in Xiaomi kernel and is missing in the evasion kernel. Thus you need to enable this option in the evasion kernel. Relunch menuconfig, set the option and recompile the kernel and the testoffsets.ko module. This should fix the offset descripancy.
 
 
 ### Patching vulnerable driver
@@ -368,6 +242,49 @@ make
 arm-eabi-ld -r inject.o ../../../examples/Xiaomi_Kernel_OpenSource/drivers/misc/mediatek/cameraisp/src/mt6765/camera_isp.ko -o camera_isp-injected.ko
 ```
 You should get file `camera_isp-injected.ko` which now contains an additional ELF section `protos` that has the function signatures.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Now we have the driver. In order to execute it, we need to load it into a kernel. The original msm kernel won't run inside Qemu due to hardware dependencies that Qemu does not have (see our paper for details). Vanilla Linux kernel is not going to work either because the driver depends on msm kernel. Also the driver expects the peripheral it controls to be present (and Qemu does not have it). 
+
+This is where our evasion kernel comes into play. It resolves all the dependencies in a generic way.
+
+
+
+
+
+
+### Configure evasion kernel 
+
+Our driver was compiled against a specific kernel configuration. In particluar, kernel configuration defines: (a) kernel subsystems, (b) layout of various kernel structures that are used by the driver. Drivers that implement IOCTL interface use at least the following kernel structures: `struct device` and `struct file`. It is critical for the evasion kernel to have the same layout for these structures. In order to help with this, 
+
+
+Because of this it is critical that the evasion kernel has some of the configuraiton options identical to the driver's host kernel.
+
+It is very important that the evasion kernel has the same configuration option for 
+
+to configure the evasion kernel the same way.
+
+```
+$ cd evasion-kernels/linux-3.10-alien
+$ ./configure.sh
+$ ./make.sh
+```
+
+
 
 ### Patching device tree file
 The driver expects a specific peripheral to be present. We don't emulate the device. Instead we make the kernel and the driver believe that the peripheral is persent. In order to do that we add a device tree entry to the devce tree file. The first step is to identify the device tree entry name. In order to find the name of the device tree nodes expected by the driver you can grep `compatible` property.
