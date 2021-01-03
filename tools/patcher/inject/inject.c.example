@@ -1,0 +1,9 @@
+int generic_stub();
+
+int randomfunction()
+{
+  generic_stub(); 
+}
+
+// http://infocenter.arm.com/help/topic/com.arm.doc.dui0474e/BABHIIEF.html
+//char funcprotos[] __attribute__((section("foo"))) = "\xde\xad\xbe\xef";
