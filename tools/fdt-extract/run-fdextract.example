@@ -1,0 +1,1 @@
+./fdtextract -f ~/prj/LKM-fuzz/linux-kernels/xiaomi/kernel-arm32/arch/arm/boot/dts/cactus.dtb.merge -t ~/prj/LKM-fuzz/linux-kernels/linux-4.9.117-alien/arch/arm/boot/dts/vexpress-v2p-ca15-tc1.dtb mediatek,fdvt
