@@ -1,0 +1,103 @@
+#! /bin/bash
+
+# source: https://stackoverflow.com/questions/192249/how-do-i-parse-command-line-arguments-in-bash
+# saner programming env: these switches turn some bugs into errors
+#set -o errexit -o pipefail -o noclobber -o nounset
+
+# -allow a command to fail with !’s side effect on errexit
+# -use return value from ${PIPESTATUS[0]}, because ! hosed $?
+! getopt --test > /dev/null 
+if [[ ${PIPESTATUS[0]} -ne 4 ]]; then
+    echo 'I’m sorry, `getopt --test` failed in this environment.'
+    exit 1
+fi
+
+OPTIONS=hdr:
+LONGOPTS=help,debug,recovery:
+
+# -regarding ! and PIPESTATUS see above
+# -temporarily store output to be able to check for errors
+# -activate quoting/enhanced mode (e.g. by writing out “--options”)
+# -pass arguments only via   -- "$@"   to separate them correctly
+#! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@")
+#if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
+#    # e.g. return value is 1
+#    #  then getopt has complained about wrong arguments to stdout
+#    exit 2
+#fi
+# read getopt’s output this way to handle the quoting right:
+#eval set -- "$PARSED"
+#
+#d=n
+#getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@"
+# now enjoy the options in order and nicely split until we see --
+
+#OPTS=$(getopt -o "hn:t:v" --long "help,num:,time:,verbose,dry-run" -n "$progname" -- "$@")
+#if [ $? != 0 ] ; then echo "Error in command line arguments." >&2 ; exit 1 ; fi
+#eval set -- "$OPTS"
+PARSED=$(getopt --options="$OPTIONS" --longoptions="$LONGOPTS" --name "$0" -- "$@")
+eval set -- "$PARSED"
+d="n"
+recovery="static"
+while true; do
+    case "$1" in
+        -d|--debug)
+            d="y"
+            shift
+            ;;
+        -r|--recovery)
+            recovery="$2"
+            shift 2
+            ;;
+        -h|--help)
+            echo "configure [--help] [--debug|-d]"
+	    echo ""
+	    echo "  -h, --help   Print this message and exit"
+	    echo ""
+	    echo "  -d, --debug  Enable debug output"
+	    echo ""
+	    echo "  -r, --recovery  IOCTL recovery (static | dynamic). Default is static."
+	    exit 0
+            shift
+            ;;
+        --)
+            shift
+            break
+            ;;
+        *)
+            echo "Programming error"
+            exit 3
+            ;;
+    esac
+done
+
+script=""
+# Place/remove -DDEBUG
+if [ "$d" == "y" ]; then
+    #echo -e "Debug printing\t[enabled]"
+    printf "%-24s\t[enabled]\n" "Debug printing"
+    script="s/<DEBUG_PLACEHOLDER>/-DDEBUG=1/g"
+    #sed 's/<DEBUG_PLACEHOLDER>/-DDEBUG=1/g' Makefile.in > Makefile
+else
+    #echo -e "Debug printing\t[disabled]"
+    printf "%-24s\t[disabled]\n" "Debug printing"
+    script="s/<DEBUG_PLACEHOLDER>//g"
+    #sed 's/<DEBUG_PLACEHOLDER>//g' Makefile.in > Makefile
+fi
+
+# Place/remove -DDYNAMICRECOVERY
+if [ "$recovery" == "dynamic" ]; then
+    #echo -e "Recovery strategy\t[dynamic]"
+    printf "%-24s\t[dynamic]\n" "Recovery strategy"
+    script+=";s/<RECOVERY_PLACEHOLDER>/-DDYNAMICRECOVERY=1/g"
+    #sed 's/<RECOVERY_PLACEHOLDER>/-DDYNAMICRECOVERY=1/g' Makefile.in > Makefile
+else
+    #echo -e "Recovery strategy\t[static]"
+    printf "%-24s\t[static]\n" "Recovery strategy"
+    script+=";s/ <RECOVERY_PLACEHOLDER>//g"
+    #sed 's/ <RECOVERY_PLACEHOLDER>//g' Makefile.in > Makefile
+fi
+
+#echo $script
+sed "$script" Makefile.in > Makefile
+touch emulate-arm.c # Se we can recopmile wen reconfigre

@@ -1,0 +1,2 @@
+1. Obtained cpregs-from-qemu.txt from qemu's output (modified function define_arm_cp_regs_with_opaque() to print them)
+2. Obtained cpregs.h by running extract-mrc.sh in alien 4.9 (these are mrc used in Linux kernel)

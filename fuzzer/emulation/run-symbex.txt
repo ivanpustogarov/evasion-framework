@@ -1,0 +1,1 @@
+./symbex.py -s memmappings/System.map -m dumps2elf/img.elf -r registers/qmp-registers.txt -i mtk_disp_mgr_ioctl

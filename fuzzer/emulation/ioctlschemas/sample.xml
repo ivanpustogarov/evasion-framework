@@ -1,0 +1,10 @@
+<struct>
+<pointer>
+  <u32/>
+  <u32 varname="count" fuzz="yes"/>
+  <u32/>
+  <u32/>
+  <u32/>
+</pointer>
+<pointer/>
+</struct>

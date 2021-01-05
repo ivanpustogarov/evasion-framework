@@ -1,0 +1,95 @@
+#! /bin/bash
+
+# Parsing args source: https://stackoverflow.com/questions/192249/how-do-i-parse-command-line-arguments-in-bash
+
+# -allow a command to fail with !’s side effect on errexit
+# -use return value from ${PIPESTATUS[0]}, because ! hosed $?
+! getopt --test > /dev/null 
+if [[ ${PIPESTATUS[0]} -ne 4 ]]; then
+    echo 'I’m sorry, `getopt --test` failed in this environment.'
+    exit 1
+fi
+
+OPTIONS=hdr:
+LONGOPTS=help,debug,recovery:
+
+PARSED=$(getopt --options="$OPTIONS" --longoptions="$LONGOPTS" --name "$0" -- "$@")
+eval set -- "$PARSED"
+d=0
+recovery="dynamic"
+while true; do
+    case "$1" in
+        -d|--debug)
+            d=$((d+1))
+            shift
+            ;;
+        -r|--recovery)
+            recovery="$2"
+            shift 2
+            ;;
+        -h|--help)
+            echo "configure [--help] [--debug|-d]"
+	    echo ""
+	    echo "  -h, --help   Print this message and exit"
+	    echo ""
+	    echo "  -d, --debug  Enable debug output, -dd to also pause in code hooks"
+	    echo ""
+	    echo "  -r, --recovery  IOCTL recovery (static | dynamic). Default is dynamic."
+	    exit 0
+            shift
+            ;;
+        --)
+            shift
+            break
+            ;;
+        *)
+            echo "Programming error"
+            exit 3
+            ;;
+    esac
+done
+
+script=""
+# Place/remove -DDEBUG
+if [ $d -ge 1 ]; then
+    #echo -e "Debug printing\t[enabled]"
+    printf "%-24s\t[enabled]\n" "Debug printing"
+    script="s/<DEBUG_PLACEHOLDER>/-DDEBUG=1/g"
+    #sed 's/<DEBUG_PLACEHOLDER>/-DDEBUG=1/g' Makefile.in > Makefile
+else
+    #echo -e "Debug printing\t[disabled]"
+    printf "%-24s\t[disabled]\n" "Debug printing"
+    script="s/<DEBUG_PLACEHOLDER>//g"
+    #sed 's/<DEBUG_PLACEHOLDER>//g' Makefile.in > Makefile
+fi
+
+# Place/remove -DGETCDEBUG, to pause with getc()
+if [ $d -ge 2 ]; then
+    #echo -e "Debug printing\t[enabled]"
+    printf "%-24s\t[enabled]\n" "Debug pausing"
+    script+=";s/<GETCDEBUG_PLACEHOLDER>/-DGETCDEBUG=1/g"
+    #sed 's/<DEBUG_PLACEHOLDER>/-DDEBUG=1/g' Makefile.in > Makefile
+else
+    #echo -e "Debug printing\t[disabled]"
+    printf "%-24s\t[disabled]\n" "Debug pausing"
+    script+=";s/<GETCDEBUG_PLACEHOLDER>//g"
+    #sed 's/<DEBUG_PLACEHOLDER>//g' Makefile.in > Makefile
+fi
+
+# Place/remove -DDYNAMICRECOVERY
+if [ "$recovery" == "dynamic" ]; then
+    #echo -e "Recovery strategy\t[dynamic]"
+    printf "%-24s\t[dynamic]\n" "Recovery strategy"
+    script+=";s/<RECOVERY_PLACEHOLDER>/-DDYNAMICRECOVERY=1/g"
+    #sed 's/<RECOVERY_PLACEHOLDER>/-DDYNAMICRECOVERY=1/g' Makefile.in > Makefile
+else
+    #echo -e "Recovery strategy\t[static]"
+    printf "%-24s\t[static]\n" "Recovery strategy"
+    script+=";s/ <RECOVERY_PLACEHOLDER>//g"
+    #sed 's/ <RECOVERY_PLACEHOLDER>//g' Makefile.in > Makefile
+fi
+
+#echo $script
+sed "$script" Makefile.in > Makefile
+touch emulate-arm.c # Se we can remake after reconfigure
+touch emulate-arm64.c # Se we can remake after reconfigure

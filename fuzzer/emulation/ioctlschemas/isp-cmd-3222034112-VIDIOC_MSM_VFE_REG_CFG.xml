@@ -1,0 +1,3 @@
+<?xml version="1.0"?>
+<struct cmd="3222034112" varname="userdata" fuzz="yes" vaddr="0x10000000" size="12">
+<array size="12"/></struct>

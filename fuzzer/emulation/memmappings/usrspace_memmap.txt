@@ -1,0 +1,12 @@
+./sample-ioctl
+00008000-00009000 r-xp 00008000 b3:00 9621       /root/sample-ioctl
+00010000-00011000 rw-p 00008000 b3:00 9621       /root/sample-ioctl
+76ffd000-76ffe000 r-xp 00000000 00:00 0          [sigpage]
+76ffe000-76fff000 r--p 00000000 00:00 0          [vvar]
+76fff000-77000000 r-xp 00000000 00:00 0          [vdso]
+7efdf000-7f000000 rw-p 00000000 00:00 0          [stack]
+ffff0000-ffff1000 r-xp 00000000 00:00 0          [vectors]
+argc = 1
+error: not enough arguments
+usage: sample-ioctl FILE
+# 
