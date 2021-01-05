@@ -1,14 +1,12 @@
 #! /bin/bash
 
-# Original version can be found here: ./prj/LKM-fuzz/my-modules/ebbchar/emulation/build-elf-from-memdumps/
-
 # This script coverts each memory dump from "../memdumps" to an relocatable
 # object ELF file (.o) using objcopy. It then links those object file into the
 # final "executable" ELF binary. This script generates linker script files which
 # are removed at the end. You can comment the following line `rm $LINKERSCRIPT $LINKERSCRIPT_S $LINKERSCRIPT_P`
 # in order to debug those scripts
 
-export PATH="$PATH:/home/ivan/prj/LKM-fuzz/linux-kernels/compilers/arm-eabi-4.6/bin"
+export PATH="$PATH:$(realpath ../../../compilers/arm-eabi-4.6/bin)"
 
 LINKERSCRIPT_S="link-s.ld"
 LINKERSCRIPT_P="link-p.ld"
