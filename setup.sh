@@ -34,14 +34,37 @@ cd qemu-3.1.1/
 ./configure --target-list=arm-softmmu
 make -j3
 
+## >> 3. Get and build gdb with arm and xml support <<
+wget https://ftp.gnu.org/gnu/gdb/gdb-10.1.tar.xz
+tar xf gdb-10.1.tar.xz
+rm gdb-10.1.tar.xz
+cd gdb-10.1
+mkdir build
+./configure \
+  --enable-targets=arm-none-eabi \
+  --prefix=$(realpath ./build) \
+  --enable-languages=all \
+  --enable-multilib \
+  --enable-interwork \
+  --with-system-readline \
+  --disable-nls \
+  --with-python=/usr/bin/python \
+  --with-guile=guile-2.0 \
+  --with-system-gdbinit=/etc/gdb/gdbinit \
+  --with-expat
+make -j8
+make install
+
 ## >> 3. Install Unicorn <<
 cd ../
 #sudo dnf install python2-setuptools.noarch
 git clone https://github.com/ivanpustogarov/afl-unicorn.git
 bash -c "cd afl-unicorn && make && cd unicorn_mode && sudo ./build_unicorn_support.sh"
 
-## >> 4. Install some perl modules <<
+## >> 4. Install some perl modules, prepare-emulation-arm.pl will need them <<
 sudo cpan Binutils::Objdump
 sudo cpan Parse::ExuberantCTags
 sudo cpan Net::OpenSSH
 sudo cpan Devel::GDB
+sudo cpan IO::Pty
+sudo cpan File::Slurp

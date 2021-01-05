@@ -12,18 +12,19 @@ Project description
 The core of the evasion framework are evasion kernels.
 
 # Dependencies
-## Download cross compilers and Qemu 3.1.1
 
-You will need ARM cross compilers to compile the evasion kernels. You will aslo need to have Qemu 3.10 to emulate the kernels. You can use script `setup.sh` to fetch compilers from codeaurora into 'compilers' folder and Qemu into 'qemu-3.1.1' folder
+You'll need the following:
+ * ARM cross compilers to compile kernel and modules
+ * Qemu 3.1.1 to run the evasion kernel
+ * GDB with ARM support
+ * Unicorn emulation library with afl patches
+ * AFL fuzzer
 
-```
-$ ./setup.sh
-```
+Run/refer to `setup.sh` script to install the dependencies.
 
 # Example/Tutorial
 
-Evasion framework is a complex project that includes many parts. One way to understand what each part does is to demostrate how they are used with an example. We will rediscover a vulnerability in Xiaomi REDMI6 kernel.
-The first step is to checkout the xioami kernel and the commit with the vulnerability.
+Evasion framework is a complex project that includes many parts. One way to understand what each part does is to demostrate how they are used with an example. We will rediscover a vulnerability in Xiaomi REDMI6 kernel. The first step is to checkout the xioami kernel and the commit with the vulnerability.
 
 ```
 $ cd examples
@@ -163,11 +164,11 @@ You should get file `camera_isp-injected.ko` which now contains an additional EL
 ## Building the evasion kernel
 
 
-Now we have the driver. In order to execute it, we need to load it into a kernel. The original msm kernel won't run inside Qemu due to hardware dependencies that Qemu does not have (see our paper for details). Vanilla Linux kernel is not going to work either because the driver depends on msm kernel. Also the driver expects the peripheral it controls to be present (and Qemu does not have it). This is where our evasion kernel comes into play. It resolves all the dependencies in a generic way.
+Now we have the driver. In order to execute it, we need to load it into a kernel. The original xiaomi kernel won't run inside Qemu due to hardware dependencies that Qemu does not have (see our paper for details). Vanilla Linux kernel is not going to work either because the driver depends on xiaomi kernel. Also the driver expects the peripheral it controls to be present (and Qemu does not have it). This is where our evasion kernel comes into play. It resolves all the dependencies in a generic way.
 
 Now we have the driver, in order to emuluate it, we need to load it to the evasion kernel.  In order to increase the probability of successfully loading the driver, the evasion kernel needs to be as close to the driver's host kernel as much as possible. By running `make kernelversion` inside xiaomi kernel tree, we can see that it's version is `v4.9.117`. Thus we will use the evasion kernel based on vanilla kernel 4.9.117.
 
-The evasion kernel is a modification of the Linux vanilla kernel. In order safe space, we distribute patches that will make evasion kernel from the vanilla kernel. The patches for 4.9.117 are in `evasion-kernels/patches/4.9.117/`. First download the vanilla kernel, and apply the patch and copy missing files.
+The evasion kernel is a modification of the Linux vanilla kernel. In order save space, we distribute patches that will make evasion kernel from the vanilla kernel. The patches for 4.9.117 are in `evasion-kernels/patches/4.9.117/`. First download the vanilla kernel, and apply the patch and copy missing files.
 
 ```
 $ cd evasion-kernels
@@ -350,5 +351,28 @@ At this point we verfied that we can load the driver and it creates  a dev entry
 
 # Part 2: fuzzing
 
-Now we have the configured evasion kernel and the driver.
+## Collect memory dump
+Now we have the configured evasion kernel and the driver. We need to load the driver to the kernel, execute an ioctl system call and this moment collect the memory/registers state from Qemu for further analysis. You can use `prepare-emulation-arm.pl` sript to do this.
+
+```
+$ cd fuzzer
+$ cp ../tools/patcher/inject/camera_isp-injected.ko binary   #  the scirpt expect the vulnerable module to be present in 'fuzzer/binary' folder
+```
+
+We need to collect the memory dump once the execution enters the driver's ioctl handerl. In order to find out the ioclt hander name, we can run
+```
+$ readelf -s binary/camera_isp-injected.ko | grep -i ioctl
+621: 00011bbc 20448 FUNC    LOCAL  DEFAULT    3 ISP_ioctl
+...
+```
+
+And we found the dev file when we loaded the driver into the evasion kernel manulaly dring the previous steps : `/dev/camera-isp`.
+
+
+The first step is to run the evasion kernel inside Qemu, load the driver, issue ioctl and collect kernel state snapshot. In order to do this we will use 
+```
+$ sudo ./prepare-tap.sh   # Creates tep interface so that we can speak with the kernel over the network
+$ ./prepare-emulation-arm.pl -m camera_isp-injected.ko -p '/dev/camera-isp' -i ISP_ioctl
+```
+
 
