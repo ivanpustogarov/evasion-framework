@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 
 import sys
 import Queue
@@ -223,23 +223,23 @@ def main():
 
     if(not os.path.isfile(args.memdump)):
         print "error: File '{}' does not exist".format(args.memdump)
-	exit(0)
+        exit(0)
     if(not os.path.isfile(args.registers)):
         print "error: File '{}' does not exist".format(args.registers)
-	exit(0)
+        exit(0)
 
     if(args.systemmap == None):
         print "error: System.map (-s) is required (use -h for help)"
-	exit(0)
+        exit(0)
 
     if(args.ioctlname == None):
         print "error: ioctl handler name is required (-i) is required (use -h for help)"
-	exit(0)
+        exit(0)
 
     if(args.systemmap != None):
         if(not os.path.isfile(args.systemmap)):
             print "error: File '{}' does not exist".format(args.systemmap)
-	    exit(0)
+            exit(0)
     #print "{} - {}".format(hex(istart), hex(iend))
     #exit(0)
 
@@ -256,10 +256,11 @@ def main():
     print "istart = {}, iend = {}".format(hex(istart),hex(iend))
     if istart==-1 or iend==-1:
         print "error: could not find ioctl handler"
-	exit(0)
+        exit(0)
     if(m1.initial_state.cpu.PC != istart):
         print "error: ioctl handler address mismatch (did you provide the right func name?, pc = {})".format(hex(m1.initial_state.cpu.PC))
-	exit(0)
+        exit(0)
+
     m1.initial_state.context['ioctl_start_addr'] = istart
     m1.initial_state.context['ioctl_end_addr'] = iend
 
@@ -279,9 +280,9 @@ def main():
         assert cpu.PC == end_address
         #instruction = cpu.read_int(cpu.PC)
         #print "Execution goal reached (pc={}). Terminating state".format(hex(end_address))
-	#m1.terminate()
-	state.generate_testcase("abc")
-	state.abandon()
+        #m1.terminate()
+        state.generate_testcase("abc")
+        state.abandon()
         #print "Instruction bytes: {:08x}".format(instruction)
         #print "0x{:016x}: {:08x}".format(cpu.PC,instruction)
 
@@ -291,30 +292,30 @@ def main():
         cpu = state.cpu
 	#print "cpu.PC = {}". format(hex(cpu.PC))
         assert cpu.PC == kmem_cache_alloc_trace_addr
-	size = state.cpu.R2
-	ret_addr = candy_memalloc(state, size)
-	print "We reached kmem_cache_alloc_trace(), size(r2)={}; using candy allocator and returning addr={} ".format(size,hex(ret_addr));
-	state.cpu.regfile.write("R0", ret_addr)
+        size = state.cpu.R2
+        ret_addr = candy_memalloc(state, size)
+        print "We reached kmem_cache_alloc_trace(), size(r2)={}; using candy allocator and returning addr={} ".format(size,hex(ret_addr));
+        state.cpu.regfile.write("R0", ret_addr)
 
     __kmalloc_addr = get_symbol_address(args.systemmap, " T __kmalloc\n")
     @m1.hook(__kmalloc_addr)
     def code_hook_kmem_cache_alloc_trace(state):
         cpu = state.cpu
         assert cpu.PC == __kmalloc_addr
-	size = state.cpu.R0
-	ret_addr = candy_memalloc(state, size)
-	print "We reached __kmalloc(), size(r0)={}; using candy allocator and returning addr={} ".format(size,hex(ret_addr));
-	state.cpu.regfile.write("R0", ret_addr)
+        size = state.cpu.R0
+        ret_addr = candy_memalloc(state, size)
+        print "We reached __kmalloc(), size(r0)={}; using candy allocator and returning addr={} ".format(size,hex(ret_addr));
+        state.cpu.regfile.write("R0", ret_addr)
 
     kmalloc_order_trace_addr = get_symbol_address(args.systemmap, " T kmalloc_order_trace\n")
     @m1.hook(kmalloc_order_trace_addr)
     def code_hook_kmem_cache_alloc_trace(state):
         cpu = state.cpu
         assert cpu.PC == kmalloc_order_trace_addr
-	size = state.cpu.R0
-	ret_addr = candy_memalloc(state, size)
-	print "We reached __kmalloc(), size(r0)={}; using candy allocator and returning addr={} ".format(size,hex(ret_addr));
-	state.cpu.regfile.write("R0", ret_addr)
+        size = state.cpu.R0
+        ret_addr = candy_memalloc(state, size)
+        print "We reached __kmalloc(), size(r0)={}; using candy allocator and returning addr={} ".format(size,hex(ret_addr));
+        state.cpu.regfile.write("R0", ret_addr)
 
     # here is the function prorotye: void *krealloc(const void *p, size_t new_size, gfp_t flags) */
     krealloc_addr = get_symbol_address(args.systemmap, " T krealloc\n")
@@ -322,22 +323,22 @@ def main():
     def code_hook_krealloc(state):
         cpu = state.cpu
         assert cpu.PC == krealloc_addr
-	p = cpu.R0
-	new_size = cpu.R1
-	flags = cpu.R2
+        p = cpu.R0
+        new_size = cpu.R1
+        flags = cpu.R2
         contents = cpu.memory.read(p, new_size)
-	new_addr = candy_memalloc(state, new_size)
-	cpu.memory.write(new_addr, contents)
-	print "We reached krealloc(p={}, new_size={}, flags={}), new addr={} ".format(hex(p), new_size, hex(flags), hex(ret_addr))
-	state.cpu.regfile.write("R0", new_addr)
+        new_addr = candy_memalloc(state, new_size)
+        cpu.memory.write(new_addr, contents)
+        print "We reached krealloc(p={}, new_size={}, flags={}), new addr={} ".format(hex(p), new_size, hex(flags), hex(ret_addr))
+        state.cpu.regfile.write("R0", new_addr)
 
     generic_stub_0_addr = get_symbol_address(args.systemmap, " T generic_stub_0\n")
     @m1.hook(generic_stub_0_addr)
     def code_hook_generic_stub_0(state):
         cpu = state.cpu
         assert cpu.PC == generic_stub_0_addr
-	#print "We reached generic_stub_0()";
-	state.cpu.regfile.write("R0", 0)
+        #print "We reached generic_stub_0()";
+        state.cpu.regfile.write("R0", 0)
 
     taint_id = 'taint_A'
 
@@ -362,12 +363,12 @@ def main():
     outf =open('./ioctlcmds.txt', 'w')
     with m1.locked_context() as mc:
         #print "Solutions = ", sorted(set(mc["sols"]))
-	i = 0
-	for sol in sorted(set(mc["sols"])):
-	    #print sol
+        i = 0
+        for sol in sorted(set(mc["sols"])):
+            #print sol
             outf.write("{}\n".format(sol))
-	    i = i + 1
-        print "=== {} solutions saved to ioctlcmds.txt".format(i)
+            i = i + 1
+    print "=== {} solutions saved to ioctlcmds.txt".format(i)
     outf.close()
 
 if __name__=='__main__':
