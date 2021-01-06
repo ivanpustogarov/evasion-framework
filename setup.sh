@@ -68,3 +68,16 @@ sudo cpan Net::OpenSSH
 sudo cpan Devel::GDB
 sudo cpan IO::Pty
 sudo cpan File::Slurp
+
+
+## >> 5. Custom version of symbolic execution library <<
+git clone https://github.com/ivanpustogarov/manticore
+cd manticore
+python2 setup.py build 
+sudo python2 setup.py install
+# Fedora
+dnf install z3-4.8.9-4.fc33.x86_64
+# Ubuntu
+sudo apt install z3
+
+

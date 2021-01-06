@@ -40,7 +40,7 @@ ZERO_SIZE_PTR dereference in ./drivers/misc/mediatek/cameraisp/src/mt6765/camera
 A local application can issue ISP_WRITE_REGISTER ioctl and cause a ZERO_SIZE_PTR (equals 0x10) dereference due to that the
 return value of kmalloc(0) is checked against NULL but not against ZERO_SIZE_PTR.
 
-Vulnerabl code in ISP_WriteReg() (around line 4383):
+Vulnerable code is in ISP_WriteReg() (around line 4383):
 
 ```
 // Around line 4383
@@ -372,7 +372,145 @@ And we found the dev file when we loaded the driver into the evasion kernel manu
 The first step is to run the evasion kernel inside Qemu, load the driver, issue ioctl and collect kernel state snapshot. In order to do this we will use 
 ```
 $ sudo ./prepare-tap.sh   # Creates tep interface so that we can speak with the kernel over the network
-$ ./prepare-emulation-arm.pl -m camera_isp-injected.ko -p '/dev/camera-isp' -i ISP_ioctl
+$ ./prepare-emulation-arm.pl -m camera_isp-injected.ko -p '/dev/camera-isp' -i ISP_ioctl -k 4.9
+```
+
+Here is the expected output:
+
+
+```
+$ ./prepare-emulation-arm.pl -m camera_isp-injected.ko -p '/dev/camera-isp' -i ISP_ioctl -k 4.9                                                                                               
+    inet 192.168.99.37/24 scope global tap0                                                                                                                                                                     
+[+] Restoring fresh virtual hard drives. Ignore audio errors messages (if any).audio: Could not init `oss' audio driver
+[+] Qemu started wth PID 104728       
+[+] Copying and loading modules
+    -- camera_isp-injected.ko
+Module                  Size  Used by    Tainted: G   
+camera_isp            395082  0 [permanent]
+
+[+] Copying test program: ./testprogram/sample-ioctl 
+[+] Getting kernel memory map/kallsyms
+[+] Extracting the address of the ioctl handler you want to fuzz
+    ISP_ioctl was loaded to at address 0x7f011bbc
+[+] Getting userspace memory maps
+[+] Generating gdb scripts...
+     warning: NOT skipping unused large range
+              0x83180000 - 0x87180000 (64 M)
+     warning: NOT skipping unused large range
+              0x87200000 - 0x8b200000 (64 M)
+     warning: NOT skipping unused large range
+              0x8b280000 - 0x8d280000 (32 M)
+    file './emulation/memdumppart.gdb' generated
+[+] gdb'ing to Qemu and taking the memdump (gdb output follows)
+warning: A handler for the OS ABI "GNU/Linux" is not built into this configuration
+of GDB.  Attempting to continue with the default 
+arm settings.                                       
+The target architecture is set to "arm".
+warning: A handler for the OS ABI "GNU/Linux" is not built into this configuration
+of GDB.  Attempting to continue with the default 
+arm settings.                                       
+warning: No executable has been specified and target does not support
+determining executable automatically.  Try using the "file" command.
+0x80118528 in ?? ()                                 
+Breakpoint 1 at 0x80240a90
+Temporary breakpoint 2 at 0x7f011bbc
+[INFO] Running test program: ./sample-ioctl /dev/camera-isp
+[+] Dumping memory regions and registers: 45/45
+[+] Memory and registers dumped                    
+[+] Qemu stopped                                    
+[+] Postprocessing emulation/gdb.txt for coprocessor registers
+[+] Generating coprocessor registers setup code
+    setup_cpregs.bin generated
+[+] All done.                                       
+    Dumps are in 'emulation/memdumps' and 'emulation/registers'
+    Memory maps (user space, kernel space, and kallsysm (or System.map) are in ./emulation/memmappings/
+    Use 'emulation/dumps2elf/dumps2elf.pl' if you want to convert memdumps to an elf image (for symbex)
+```
+
+After this command, the memory will be saved into `emulation /memdumps`, and registers are saved in `emulation/registers`. Arm corprocessor registers will be set using code in `emulation/set_cpregs.bin`. 
+
+
+## Emulating memory dump
+
+Now we can emulate the driver code using cpu only emualation tool. There are two key feautures of our emulator:
+
+ * If driver code accesses invalid memory, the emulation segfaults. This allows us to capture memory violiation erros 
+ * It recovers IOCTL structure format automatically, 
+ * I aligns fuzzer's input automatically directly in the memory
+ * We can re-execute emualation very fast. This allows us to use the fuzzer eficiently
+
+We collected memory/registers at the time when the execution entered the IOCTL handerl (ISP_ioctl). Our emulation tools will continue the execution from this point. You can run this as follows:
+
+```
+$ cd fuzzer/emulation
+$ make
+$ ./emulate-arm -s memmappings/System.map
+[DEBUG]: "[+] Initializing registers from registers/qmp-registers txt"                                                                                                                   [DEBUG]: "[+] Dumping registers\n" 
+...
+    0x80240ad0:         mov     r0, r4
+    0x80240ad4:         pop     {r3, r4, r5, r6, r7, r8, sb, pc}
+[DEBUG]: ">>> PC = 0x801076c0"
+Emulation only took 0.001544 seconds
+```
+
+## Recovering IOCTL command numbers with symbolic execution
+
+IOCTL hander's use commands. Each command has a magic number. Fuzzers are bad at recovering magic numbers. This is why we need to recover this numbers first. There two way to do this: 1) manually from the source code; 2) with our symbolic executio tool.  Let's try the second approach. The symbolic execution tools accepts dumps combined as an elf file. You can use `emulation/dumps2elf/dumps2elf.pl` script to do the conversion.
+
+```
+$ cd dumps2elf
+$ ./dumps2elf.sh  # It will read files from ../memdumps
+```
+
+Now we are ready to run symbolic execution.
+
+```
+./symbex.py -m dumps2elf/img.elf -s memmappings/System.map -r registers/qmp-registers.txt -i ISP_ioctl
+```
+
+(Expect ~4GB of RAM to be used for symbolic execution)
+This will produce a list of numbers that are ioctl commands and will save them into `ioctlcmds.txt`. Usually you want to fuzz all of them. But for this tutorial we focus on ISP_WRITE_REGISTER ioctl which is 3221777154. You can verify that `ioctlcmds.txt` has this number.
+
+
+## Fuzzing
+
+```
+$ mkdir output-3221777154
+$ export cmd=3221777154
+$ sudo sh -c "echo core >/proc/sys/kernel/core_pattern"
+$ sudo echo performance | sudo tee cpu*/cpufreq/scaling_governor
+$ AFL_NO_AFFINITY=1 ../../afl-unicorn/afl-fuzz -U -m none -i ./sample_inputs -o $outputdir -- ./emulate-arm -s ./memmappings/System.map -c $cmd -f @@
 ```
 
 
+```
+                     american fuzzy lop 2.52b (emulate-arm)
+
+┌─ process timing ─────────────────────────────────────┬─ overall results ─────┐
+│        run time : 0 days, 0 hrs, 15 min, 15 sec      │  cycles done : 5      │
+│   last new path : 0 days, 0 hrs, 0 min, 52 sec       │  total paths : 29     │
+│ last uniq crash : 0 days, 0 hrs, 0 min, 35 sec       │ uniq crashes : 16     │
+│  last uniq hang : 0 days, 0 hrs, 1 min, 5 sec        │   uniq hangs : 6      │
+├─ cycle progress ────────────────────┬─ map coverage ─┴───────────────────────┤
+│  now processing : 5 (17.24%)        │    map density : 0.13% / 0.26%         │
+│ paths timed out : 0 (0.00%)         │ count coverage : 1.12 bits/tuple       │
+├─ stage progress ────────────────────┼─ findings in depth ────────────────────┤
+│  now trying : havoc                 │ favored paths : 19 (65.52%)            │
+│ stage execs : 26.6k/32.8k (81.12%)  │  new edges on : 27 (93.10%)            │
+│ total execs : 100k                  │ total crashes : 3374 (16 unique)       │
+│  exec speed : 114.4/sec             │  total tmouts : 22 (6 unique)          │
+├─ fuzzing strategy yields ───────────┴───────────────┬─ path geometry ────────┤
+│   bit flips : 4/960, 3/954, 1/942                   │    levels : 4          │
+│  byte flips : 1/120, 0/114, 0/102                   │   pending : 24         │
+│ arithmetics : 6/6714, 0/6676, 0/4415                │  pend fav : 16         │
+│  known ints : 0/341, 0/1331, 1/2420                 │ own finds : 28         │
+│  dictionary : 0/0, 0/0, 0/87                        │  imported : n/a        │
+│       havoc : 13/41.2k, 3/6864                      │ stability : 100.00%    │
+│        trim : 81.16%/48, 0.00%                      ├────────────────────────┘
+^C────────────────────────────────────────────────────┘             [cpu: 58%]
+
++++ Testing aborted by user +++
+[+] We're done here. Have a nice day!
+```
+
+The output should be in `output-3221777154/`. 
