@@ -46,12 +46,13 @@ def candy_memalloc(s, size):
     prev_brk = s.context["candy_brk"]
     s.context["candy_brk"] = s.context["candy_brk"] + size
     if(s.context["candy_brk"] > 0x11400000):
-        printf("warning: candy allocator is out of memory (4MB)\n")
+        print("warning: candy allocator is out of memory (4MB)\n")
     return prev_brk
 
 
 logger = logging.getLogger(__name__)
-MAX_INSTS = 25000
+#MAX_INSTS = 25000
+MAX_INSTS = 1000
 class InstructionFollower(Plugin):
 
     #def will_execute_instruction_callback(self, state, pc, instruction):
@@ -78,7 +79,7 @@ class InstructionFollower(Plugin):
     def did_fork_state_callback(self, child_state, expression, new_value, policy):
         #print "Forked, pc={}, new_value={}".format(hex(child_state.cpu.PC), hex(new_value))
         #print "Child fork, pc={}".format(hex(child_state.cpu.PC))
-	pc = child_state.cpu.PC
+        pc = child_state.cpu.PC
         istart = child_state.context['ioctl_start_addr'] 
         iend = child_state.context['ioctl_end_addr']
         if( (pc >= istart) and (pc <= iend)):
@@ -346,6 +347,9 @@ def main():
     m1.register_plugin(f)
 
     init_candy_allocator(m1.initial_state)
+
+
+
     m1.initial_state.cpu.R1 = m1.initial_state.new_symbolic_value(32,taint=(taint_id,))
     m1.initial_state.context['symbolic_r1'] = m1.initial_state.cpu.R1
     m1.initial_state.cpu.memory.mmap(0x10000000, 0x1000, 'rwx', name='argp') # To have some memory allocated for argp in case the driver copy from user before ioctl cmd switch statement
