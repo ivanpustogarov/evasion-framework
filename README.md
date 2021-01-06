@@ -474,6 +474,10 @@ This will produce a list of numbers that are ioctl commands and will save them i
 
 ## Fuzzing
 
+The core of the fuzzing process is program called `emualte-arm`. It reads the memory snapshot/registers and emulates it from the point where we took the memory dump. It's a quite complex program that does many things, but the key features is that it segfaults when the correspodning drive would segfault in the kenrel. This allows the fuzzer to catch those crashes.
+
+
+### Finding crashes
 ```
 $ mkdir output-3221777154
 $ export cmd=3221777154
@@ -513,4 +517,49 @@ $ AFL_NO_AFFINITY=1 ../../afl-unicorn/afl-fuzz -U -m none -i ./sample_inputs -o 
 [+] We're done here. Have a nice day!
 ```
 
-The output should be in `output-3221777154/`. 
+Now we found a number of crashes and the fuzzer output is in `output-3221777154/`. 
+
+### Generating programs
+
+When it comes to local privelege escalation vulnerabilities via IOCTL's, such vulnerabilities are triggered by a local unpriveleged program. Such program issues an ioctl system call, with two arguments: cmd, and an a pointer to arbitrary structure. Recovering such structure is a difficult problem but `emulate-arm` is able to do automatically. First you need to run emulation again with the crashing input:
+
+```
+./emulate-arm -s ./memmappings/System.map -c $cmd -f output-3221777154/crashes/id\:000000\,sig\:11\,src\:000000\,op\:int32\,pos\:4\,val\:+0 
+```
+This will generate file `recovered-ioctlscheme-cmd-3221777154` with xml representation of the recovered ioctl structure. Then you can use to use script `./xml2c.pl` to generate a program that triggers the vulnerability.
+
+
+```
+$ ./xml2c.pl recovered-ioctlscheme-cmd-3221777154 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <sys/ioctl.h>
+
+struct sp_0x10000000 {
+  uint8_t farray_0x10000008[0];
+};
+
+struct toplevel_0x10000000 {
+  struct sp_0x10000000 *fp_0x10000000;
+  uint8_t farray_0x10000004[4];
+};
+
+int main()
+{
+
+  struct sp_0x10000000 var_sp_0x10000000;
+  memcpy(&var_sp_0x10000000.farray_0x10000008, "", 0);
+  
+  struct toplevel_0x10000000 var_toplevel_0x10000000;
+  var_toplevel_0x10000000.fp_0x10000000 = &var_sp_0x10000000;
+  memcpy(&var_toplevel_0x10000000.farray_0x10000004, "\x00\x00\x00\x00", 4);
+  
+  int fd = open('/dev/xxx', O_RDWR);
+  ioctl(fd, 3221777154, &var_toplevel_0x10000000);
+}
+```
+
+
+
+
