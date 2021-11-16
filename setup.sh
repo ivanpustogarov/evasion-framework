@@ -35,6 +35,7 @@ cd qemu-3.1.1/
 make -j3
 
 ## >> 3. Get and build gdb with arm and xml support <<
+cd ../
 wget https://ftp.gnu.org/gnu/gdb/gdb-10.1.tar.xz
 tar xf gdb-10.1.tar.xz
 rm gdb-10.1.tar.xz
