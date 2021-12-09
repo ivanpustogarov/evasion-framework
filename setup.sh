@@ -1,5 +1,33 @@
 #! /bin/bash
 
+## >> 0. Some dependencies
+
+sudo apt update
+sudo apt install python2 libreadline-dev \
+libisl-dev \
+libreadline5 \
+g++ \
+libexpat1-dev \
+libmpfr-dev \
+libpython-all-dev \
+guile-2.0-dev \
+libglib2.0-dev \
+libglib2.0-0 \
+libpixman-1-dev \
+flex \
+bison \
+uml-utilities \
+exuberant-ctags \
+libcapstone-dev \
+python-setuptools \
+python3-pip  \
+python-dev \
+build-essential \
+libcapstone-dev \
+python-capstone \
+python-pyelftools \
+texinfo
+
 ## >>  1. Get cross compilers <<
 mkdir compilers
 cd compilers
@@ -76,9 +104,10 @@ git clone https://github.com/ivanpustogarov/manticore
 cd manticore
 python2 setup.py build 
 sudo python2 setup.py install
+
 # Fedora
-dnf install z3-4.8.9-4.fc33.x86_64
+lsb_release -a | grep Fedora && dnf install z3-4.8.9-4.fc33.x86_64
 # Ubuntu
-sudo apt install z3
+lsb_release -a | grep Ubuntu && sudo apt install z3
 
 
