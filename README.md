@@ -147,6 +147,7 @@ Next go to `tools/patcher` and run the script to extract function prototypes.
 
 ```
 $ cd tools/patcher
+$ make
 $ ./funcsigs.pl ../../examples/Xiaomi_Kernel_OpenSource/drivers/misc/mediatek/cameraisp/src/mt6765/camera_isp.ko ../../examples/Xiaomi_Kernel_OpenSource/tags
 ```
 
@@ -279,7 +280,7 @@ The necessary device tree file entries should come with the xiaomi kernel. They 
 $ grep mediatek,imgsys  arch/arm/boot/dts/mt6756.dtb
 Binary file arch/arm/boot/dts/mt6765 matches
 ```
-It contains the first device tree node. We need to copy it to the evasion kernel's device tree file. You can use `evasion-framework/fuzzer/fdt-extract/fdtextract` program to do this:
+It contains the first device tree node. We need to copy it to the evasion kernel's device tree file. You can use `evasion-framework/tools/fdt-extract/fdtextract` program to do this:
 
 ```
 $ ./fdtextract -f ../../examples/Xiaomi_Kernel_OpenSource/arch/arm/boot/dts/mt6765.dtb -t ../../evasion-kernels/linux-4.9.117-evasion/arch/arm/boot/dts/vexpress-v2p-ca15-tc1.dtb "mediatek,imgsys"
@@ -321,8 +322,7 @@ mediatek,smi_larb7
 
 In this case we will create generic nodes using the same program (`fdtextract`):
 ```
-$ ./fdtextract -f none -t /home/ivan/prj/evasion-framework/evasion-kernels/linux
--4.9.117-alien/arch/arm/boot/dts/vexpress-v2p-ca15-tc1.dtb "mediatek,camsv0"
+$ ./fdtextract -f none -t ../../evasion-kernels/linux-4.9.117-evasion/arch/arm/boot/dts/vexpress-v2p-ca15-tc1.dtb "mediatek,camsv0"
 ```
 (repeat for other nodes).
 
@@ -356,7 +356,7 @@ Now we have the configured evasion kernel and the driver. We need to load the dr
 
 ```
 $ cd fuzzer
-$ cp ../tools/patcher/inject/camera_isp-injected.ko binary   #  the scirpt expect the vulnerable module to be present in 'fuzzer/binary' folder
+$ cp ../tools/patcher/inject/camera_isp-injected.ko ./binary/   #  the scirpt expect the vulnerable module to be present in 'fuzzer/binary' folder
 ```
 
 We need to collect the memory dump once the execution enters the driver's ioctl handerl. In order to find out the ioclt hander name, we can run
