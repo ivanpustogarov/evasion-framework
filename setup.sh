@@ -27,7 +27,8 @@ libcapstone-dev \
 python-capstone \
 python-pyelftools \
 texinfo \
-libfdt-dev
+libfdt-dev \
+libxml2-dev
 
 ## >>  1. Get cross compilers <<
 mkdir compilers
