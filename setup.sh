@@ -26,7 +26,8 @@ build-essential \
 libcapstone-dev \
 python-capstone \
 python-pyelftools \
-texinfo
+texinfo \
+libfdt-dev
 
 ## >>  1. Get cross compilers <<
 mkdir compilers
