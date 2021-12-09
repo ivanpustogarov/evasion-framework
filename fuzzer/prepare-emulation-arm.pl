@@ -665,6 +665,12 @@ sub dump_guest_memory
   
   # Delete all dumps
   #print "[INFO] Deleting old memdumps\n";
+  mkdir("emulation/memdumps")
+           or $!{EEXIST}   # Don't die if folder already exists.
+           or die("Can't create directory \"emulation/memdumps\": $!\n");
+  mkdir("emulation/registers")
+           or $!{EEXIST}   # Don't die if the folder already exists.
+           or die("Can't create directory \"emulation/registers\": $!\n");
   unlink glob "'emulation/registers/*'";
   unlink glob "'emulation/memdumps/*'";
   unlink "emulation/gdb.txt";
