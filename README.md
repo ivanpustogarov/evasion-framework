@@ -347,7 +347,12 @@ camera_isp            395594  0 [permanent]
 
 and you should also have a new entry in `/dev/` : `/dev/camera-isp`.
 
-At this point we verfied that we can load the driver and it creates  a dev entry for which we can issue ioctl's
+`At this point we verfied that we can load the driver and it creates a dev entry for which we can issue ioctl's. You can poweroff the evastion kernel VM:
+
+```
+# poweroff
+```
+
 
 # Part 2: fuzzing
 
