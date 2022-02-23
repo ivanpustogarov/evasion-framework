@@ -6,7 +6,7 @@ This is an early research prototype and work in progress. Contributions are welc
 
 See IEEE S&P paper ["Ex-vivo dynamic analysis framework for android device drivers"](https://ieeexplore.ieee.org/document/9152767)
 
-Project description
+Project includes:
  * Evasion kernel
  * DTB rewriter
  * Binary patcher
