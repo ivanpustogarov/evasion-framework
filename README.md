@@ -2,6 +2,10 @@
 
 Testing IOCTL's in Android device drivers without devices.
 
+This is an early research prototype and work in progress. Contributions are welcome. 
+
+See IEEE S&P paper ["Ex-vivo dynamic analysis framework for android device drivers"](https://ieeexplore.ieee.org/document/9152767)
+
 Project description
  * Evasion kernel
  * DTB rewriter
